@@ -23,7 +23,7 @@ desktop.ini
 # Built DLLs (not tracked — build from source)
 *.dll
 
-# But track Release folder contents (INI + README for distribution)
-!Release/
-!Release/**
-Release/scripts/*.dll
+# But track dist folder contents (INI + README for distribution)
+!dist/
+!dist/**
+dist/scripts/*.dll
