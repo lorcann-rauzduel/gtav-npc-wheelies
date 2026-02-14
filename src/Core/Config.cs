@@ -188,7 +188,7 @@ namespace StreetRiders
                     {
                         Name       = name,
                         Enabled    = ini.GetValue(section, "Enabled", true),
-                        Weight     = ini.GetValue(section, "Weight", 10),
+                        Weight     = ini.GetValue(section, "Chance", 10),
                         PedModels  = ParseCsv(ini.GetValue(section, "PedModels", "")),
                         BikeModels = ParseCsv(ini.GetValue(section, "BikeModels", ""), true),
                         Zones      = ParseCsv(ini.GetValue(section, "Zones", ""), true),

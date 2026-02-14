@@ -2,8 +2,6 @@
 
 A GTA V mod that spawns motorcycle gangs who cruise through their turf and pull realistic wheelies. Features physics-based wheelie mechanics, zone-restricted gang territories, and a follow-the-player system.
 
-> **ScriptHookVDotNet 3** mod for Grand Theft Auto V
-
 ## Features
 
 - **Realistic Wheelie Physics** — Smooth, continuous force-based system with angular velocity damping and gravity compensation. Bikes lift naturally and hold a stable angle.
@@ -92,7 +90,7 @@ Each group defines a gang with specific bikes, weapons, zones, and active hours.
 | Setting | Example | Description |
 |---------|---------|-------------|
 | `Enabled` | `true` | Enable this group |
-| `Weight` | `12` | Spawn weight (higher = more likely) |
+| `Chance` | `12` | Spawn chance (relative, higher = more likely — no max, typically 1-100) |
 | `PedModels` | `g_m_y_famca_01, ...` | Comma-separated ped model names |
 | `BikeModels` | `BF400, SANCHEZ2` | Comma-separated bike model names |
 | `MixedVehicles` | `true` | Each rider gets a different bike from the list |
@@ -127,7 +125,7 @@ Override per bike model with `[Bike_SANCHEZ]`, `[Bike_BF400]`, etc.
 
 ### Zone Reference
 
-Common GTA V zone codes:
+Common GTA V zone codes ([full list — `GET_NAME_OF_ZONE`](https://docs.fivem.net/natives/?_0xCD90657D4C30E1CA)):
 
 | Code | Zone | Code | Zone |
 |------|------|------|------|
@@ -150,7 +148,6 @@ Enable with `[TestMode] Enabled = true`.
 | `F10` | Hot-reload config |
 | `NumPad1` | Force-spawn a group |
 | `NumPad0` | Delete all riders |
-| `NumPad2` | Advance game time +1h |
 
 The debug overlay shows real-time rider state: phase, pitch angle, speed, and force applied.
 
@@ -163,9 +160,8 @@ The debug overlay shows real-time rider state: phase, pitch angle, speed, and fo
 ## Troubleshooting
 
 - **Riders don't spawn?** Check zone and active hours. Enable Debug for details.
-- **Riders crash into cars?** Use `DrivingFlags = 786603` (default).
+- **Riders crash into cars?** Adjust `DrivingFlags` in `[DefaultWheelie]` — see [driving flags reference](https://docs.fivem.net/natives/?_0xDACE1BE37D88AF67).
 - **Wheelies too strong?** Lower `LiftForce` and/or `TargetPitch`.
-- **Riders stuck after falling?** Increase `RemountTaskCooldown` (try 5000).
 - **Follow mode triggers too easily?** Increase `DynamicTriggerMs` and `DynamicMinSpeed`.
 - **Riders lose you too fast?** Increase `LoseRadius` (try 300).
 - **Riders enter combat and stop riding?** Remove `Weapons` from the group config, or set `BlockNonTempEvents = true`.
@@ -175,6 +171,16 @@ The debug overlay shows real-time rider state: phase, pitch angle, speed, and fo
 
 - [ScriptHookV](http://www.dev-c.com/gtav/scripthookv/) by Alexander Blade
 - [ScriptHookVDotNet](https://github.com/scripthookvdotnet/scripthookvdotnet) by crosire & community
+
+## Useful Links
+
+| Resource | URL |
+|----------|-----|
+| Zone codes (`GET_NAME_OF_ZONE`) | https://docs.fivem.net/natives/?_0xCD90657D4C30E1CA |
+| Driving flags (`TASK_VEHICLE_DRIVE_TO_COORD`) | https://docs.fivem.net/natives/?_0xDACE1BE37D88AF67 |
+| Vehicle colors | https://wiki.rage.mp/index.php?title=Vehicle_Colors |
+| Motorcycle models | https://wiki.gtanet.work/index.php/Motorcycles |
+| Weapon list | https://wiki.rage.mp/index.php?title=Weapons |
 
 ## License
 
