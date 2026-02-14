@@ -13,6 +13,13 @@
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
   </PropertyGroup>
 
+  <!-- Auto-copy DLL to dist/scripts after each build -->
+  <Target Name="CopyToDist" AfterTargets="Build">
+    <Copy SourceFiles="$(OutputPath)$(AssemblyName).dll"
+          DestinationFolder="$(MSBuildProjectDirectory)\..\dist\scripts\"
+          SkipUnchangedFiles="true" />
+  </Target>
+
   <ItemGroup>
     <Reference Include="ScriptHookVDotNet3">
       <HintPath>D:\SteamLibrary\steamapps\common\Grand Theft Auto V\ScriptHookVDotNet3.dll</HintPath>
