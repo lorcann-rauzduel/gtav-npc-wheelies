@@ -155,7 +155,7 @@ The debug overlay shows real-time rider state: phase, pitch angle, speed, and fo
 
 - **Weapons & combat**: Equipping riders with weapons (`Weapons` setting) is optional and may cause unexpected behavior. Armed riders can enter combat with other NPCs, which may interrupt their riding tasks. This feature is actively being improved.
 - **Bodyguard mode**: A bodyguard system exists in the INI (`BodyguardEnabled`) but is still under development. **Do not enable it** — riders may attack each other or the player. This will be properly released in a future update.
-- **Remount after falling**: Riders usually recover and remount, but in some edge cases they may get stuck. Increasing `RemountTaskCooldown` can help.
+- **Remount after falling**: Riders usually recover and remount, but in some edge cases they may get stuck.
 
 ## Troubleshooting
 
@@ -176,10 +176,11 @@ The debug overlay shows real-time rider state: phase, pitch angle, speed, and fo
 
 | Resource | URL |
 |----------|-----|
-| Zone codes (`GET_NAME_OF_ZONE`) | https://docs.fivem.net/natives/?_0xCD90657D4C30E1CA |
-| Driving flags (`TASK_VEHICLE_DRIVE_TO_COORD`) | https://docs.fivem.net/natives/?_0xDACE1BE37D88AF67 |
+| Zone codes | https://docs.fivem.net/natives/?_0xCD90657D4C30E1CA |
+| Driving flags | https://docs.fivem.net/natives/?_0xDACE1BE37D88AF67 |
 | Vehicle colors | https://wiki.rage.mp/index.php?title=Vehicle_Colors |
 | Motorcycle models | https://wiki.gtanet.work/index.php/Motorcycles |
+| List of scenarios (for peds) | https://gtaforums.com/topic/796181-list-of-scenarios-for-peds |
 | Weapon list | https://wiki.rage.mp/index.php?title=Weapons |
 
 ## License
