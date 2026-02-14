@@ -1,6 +1,6 @@
 # Street Riders: Realistic NPC Wheelies
 
-A GTA V mod that spawns motorcycle gangs who cruise through their turf and pull realistic wheelies. Features physics-based wheelie mechanics, zone-restricted gang territories, a follow-the-player system, and bodyguard protection.
+A GTA V mod that spawns motorcycle gangs who cruise through their turf and pull realistic wheelies. Features physics-based wheelie mechanics, zone-restricted gang territories, and a follow-the-player system.
 
 > **ScriptHookVDotNet 3** mod for Grand Theft Auto V
 
@@ -10,9 +10,8 @@ A GTA V mod that spawns motorcycle gangs who cruise through their turf and pull 
 - **Gang-Based Spawning** — Define rider groups tied to specific GTA V zones and active hours. Families ride through Chamberlain at night, Ballas cruise Davis, etc.
 - **Follow Player** — Riders can follow your vehicle with two trigger modes: Proximity (distance) or Dynamic (speed-based overtaking).
 - **Dismount Behaviors** — When you get off your vehicle, riders can Wait (idle near you), Continue (pick a new leader), or Freestyle (ride loops and do wheelies).
-- **Bodyguard Mode** *(experimental)* — Riders protect you when you're attacked, with relationship locking to prevent friendly fire.
 - **Mixed Vehicles & Colors** — Each rider can ride a different bike model with configurable paint colors per group.
-- **Armed Riders** — Equip each group with specific weapons.
+- **Weapons** *(optional)* — Equip each group with specific weapons. See *Known Issues* below.
 - **Police Interaction** — Cops can chase and arrest riders with persistent pursuit tracking.
 - **Per-Bike Tuning** — Override wheelie parameters for individual bike models.
 - **Natural Rider Support** — Optionally apply wheelie AI to NPC bikers already in traffic.
@@ -86,16 +85,6 @@ What happens when you get off your vehicle while riders are following.
 | `IdleMinStayDistance` | `6.0` | Min distance riders stay near player (m) |
 | `IdleScenarioWaitMs` | `4000` | Delay before starting a scenario (ms) |
 
-### Bodyguard *(experimental)*
-
-Riders protect you when you're attacked. Uses relationship locking to prevent friendly fire.
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `BodyguardEnabled` | `true` | Enable bodyguard mode |
-| `BodyguardRadius` | `30.0` | Attacker detection radius (m) |
-| `BodyguardDurationMs` | `15000` | Max engagement duration before resuming |
-
 ### Rider Groups (`[Group_XXX]`)
 
 Each group defines a gang with specific bikes, weapons, zones, and active hours.
@@ -111,7 +100,7 @@ Each group defines a gang with specific bikes, weapons, zones, and active hours.
 | `DoWheelie` | `true` | Enable wheelies for this group |
 | `Zones` | `CHAMH, STRAW` | GTA V zone codes (empty = everywhere) |
 | `ActiveHourStart/End` | `18` / `4` | Active time window (wraps around midnight) |
-| `Weapons` | `WEAPON_PISTOL, ...` | Comma-separated weapon names |
+| `Weapons` | `WEAPON_PISTOL, ...` | *(optional)* Comma-separated weapon names — see Known Issues |
 | `CanFollowPlayer` | `true` | Allow this group to follow the player |
 
 ### Wheelie Tuning (`[DefaultWheelie]` / `[Bike_XXX]`)
@@ -165,6 +154,12 @@ Enable with `[TestMode] Enabled = true`.
 
 The debug overlay shows real-time rider state: phase, pitch angle, speed, and force applied.
 
+## Known Issues
+
+- **Weapons & combat**: Equipping riders with weapons (`Weapons` setting) is optional and may cause unexpected behavior. Armed riders can enter combat with other NPCs, which may interrupt their riding tasks. This feature is actively being improved.
+- **Bodyguard mode**: A bodyguard system exists in the INI (`BodyguardEnabled`) but is still under development. **Do not enable it** — riders may attack each other or the player. This will be properly released in a future update.
+- **Remount after falling**: Riders usually recover and remount, but in some edge cases they may get stuck. Increasing `RemountTaskCooldown` can help.
+
 ## Troubleshooting
 
 - **Riders don't spawn?** Check zone and active hours. Enable Debug for details.
@@ -173,6 +168,7 @@ The debug overlay shows real-time rider state: phase, pitch angle, speed, and fo
 - **Riders stuck after falling?** Increase `RemountTaskCooldown` (try 5000).
 - **Follow mode triggers too easily?** Increase `DynamicTriggerMs` and `DynamicMinSpeed`.
 - **Riders lose you too fast?** Increase `LoseRadius` (try 300).
+- **Riders enter combat and stop riding?** Remove `Weapons` from the group config, or set `BlockNonTempEvents = true`.
 - **Performance issues?** Lower `WheelieActiveDistance`, reduce `MaxActiveGroups`.
 
 ## Credits

@@ -7,13 +7,15 @@ using GTA.Native;
 using GTA.Math;
 using GTA.UI;
 
-/// <summary>
-/// Main entry point. Constructor, tick, input, debug utilities.
-/// Config     -> RidersConfig.cs
-/// Spawning   -> RidersSpawning.cs
-/// Wheelie    -> RidersWheelie.cs   (tweak wheelie physics here!)
-/// </summary>
-public partial class RidersScript : Script
+namespace StreetRiders
+{
+    /// <summary>
+    /// Main entry point. Constructor, tick, input, debug utilities.
+    /// Config   -> StreetRidersConfig.cs
+    /// Spawning -> StreetRidersSpawning.cs
+    /// Wheelie  -> StreetRidersWheelie.cs
+    /// </summary>
+    public partial class StreetRidersScript : Script
 {
     public RidersScript()
     {
@@ -147,3 +149,4 @@ public partial class RidersScript : Script
         t.Draw();
     }
 }
+} // namespace StreetRiders

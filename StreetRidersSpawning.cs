@@ -6,11 +6,12 @@ using GTA.Native;
 using GTA.Math;
 using GTA.UI;
 
-/// <summary>
-/// Group spawning, per-rider processing loop, remount, cleanup, destinations.
-/// FIXED VERSION - Improved HandleRemount to properly handle idle peds after crashes
-/// </summary>
-public partial class RidersScript
+namespace StreetRiders
+{
+    /// <summary>
+    /// Group spawning, per-rider processing loop, remount, cleanup, destinations.
+    /// </summary>
+    public partial class StreetRidersScript
 {
     // =========================================================================
     //  Zone-Filtered Spawning
@@ -2196,3 +2197,4 @@ public partial class RidersScript
         else ped.Delete();
     }
 }
+} // namespace StreetRiders

@@ -5,10 +5,12 @@ using System.Windows.Forms;
 using GTA;
 using GTA.Math;
 
-/// <summary>
-/// All fields, data classes, and configuration loading.
-/// </summary>
-public partial class RidersScript
+namespace StreetRiders
+{
+    /// <summary>
+    /// All fields, data classes, and configuration loading.
+    /// </summary>
+    public partial class StreetRidersScript
 {
     // ===== Constants =====
     private static readonly string INI_PATH = "scripts\\StreetRiders.ini";
@@ -461,3 +463,4 @@ public partial class RidersScript
         return null;
     }
 }
+} // namespace StreetRiders

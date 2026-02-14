@@ -3,13 +3,15 @@ using GTA;
 using GTA.Native;
 using GTA.Math;
 
-/// <summary>
-/// Wheelie physics — continuous smooth force with angular velocity damping.
-/// Cycle: Idle -> Attempting (short bursts) -> Sustained (long) -> Idle
-/// Force is applied every frame (not pulsed) with progressive pitch fade
-/// and velocity-based damping to prevent oscillation and jerky movement.
-/// </summary>
-public partial class RidersScript
+namespace StreetRiders
+{
+    /// <summary>
+    /// Wheelie physics — continuous smooth force with angular velocity damping.
+    /// Cycle: Idle -> Attempting (short bursts) -> Sustained (long) -> Idle
+    /// Force is applied every frame (not pulsed) with progressive pitch fade
+    /// and velocity-based damping to prevent oscillation and jerky movement.
+    /// </summary>
+    public partial class StreetRidersScript
 {
     private string _wheelieSkipReason = "";
 
@@ -232,3 +234,4 @@ public partial class RidersScript
         return v;
     }
 }
+} // namespace StreetRiders

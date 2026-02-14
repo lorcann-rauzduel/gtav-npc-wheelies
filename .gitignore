@@ -1,7 +1,6 @@
 # Build output
 obj/
 bin/
-*.dll
 *.pdb
 *.exe
 
@@ -11,7 +10,7 @@ bin/
 *.suo
 *.cache
 
-# Release archives
+# Release archives (use GitHub Releases instead)
 *.rar
 *.zip
 *.7z
@@ -21,5 +20,10 @@ Thumbs.db
 desktop.ini
 .DS_Store
 
-# Keep Release folder structure but ignore built DLLs
+# Built DLLs (not tracked — build from source)
+*.dll
+
+# But track Release folder contents (INI + README for distribution)
+!Release/
+!Release/**
 Release/scripts/*.dll
