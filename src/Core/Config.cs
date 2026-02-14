@@ -1,9 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
+using System.Text;
 using System.Windows.Forms;
 using GTA;
 using GTA.Math;
+using GTA.UI;
 
 namespace StreetRiders
 {
@@ -12,6 +15,12 @@ namespace StreetRiders
     /// </summary>
     public partial class StreetRidersScript
     {
+        // ===== P/Invoke for Windows INI API =====
+        [DllImport("kernel32", CharSet = CharSet.Unicode)]
+        private static extern int GetPrivateProfileString(
+            string section, string key, string defaultValue,
+            StringBuilder retVal, int size, string filePath);
+
         // ===== Constants =====
         private static readonly string INI_PATH = "scripts\\StreetRiders.ini";
         private const int LOGIC_INTERVAL_MS = 1500;
@@ -51,7 +60,7 @@ namespace StreetRiders
         private float _followRadius;
         private float _followLoseRadius;
         private float _dynamicSpeedThreshold;
-        private int   _dynamicTriggerMs;       // How long player must stay fast before trigger (ms)
+        private int _dynamicTriggerMs;
         private string _playerVehicleType;
         private DismountBehavior _dismountBehavior;
         private List<string> _idleScenarios;
@@ -61,6 +70,7 @@ namespace StreetRiders
         private float _idleFollowDist;
         private float _idleMinStayDist;
         private int _idleScenarioWaitMs;
+        private int _followMinDistance;
 
         // ===== Bodyguard =====
         private bool _bodyguardEnabled;
@@ -88,94 +98,197 @@ namespace StreetRiders
         private readonly Random _rnd = new Random();
 
         // =========================================================================
+        //  INI Helper Methods (Windows API)
+        // =========================================================================
+
+        private string GetIniString(string file, string section, string key, string defaultValue)
+        {
+            var sb = new StringBuilder(255);
+            GetPrivateProfileString(section, key, defaultValue, sb, 255, file);
+            return sb.ToString();
+        }
+
+        // Ajoute cette petite méthode utilitaire
+        private string CleanValue(string input)
+        {
+            if (string.IsNullOrEmpty(input)) return string.Empty;
+
+            // Trouve l'index du commentaire ';'
+            int commentIndex = input.IndexOf(';');
+            if (commentIndex >= 0)
+            {
+                // Garde uniquement ce qu'il y a avant le ';'
+                input = input.Substring(0, commentIndex);
+            }
+
+            // Enlève les espaces avant et après (ex: " 45.0 " devient "45.0")
+            return input.Trim();
+        }
+
+        private float GetIniFloat(string file, string section, string key, float defaultValue)
+        {
+            var sb = new StringBuilder(255);
+            GetPrivateProfileString(section, key, "", sb, 255, file);
+            
+            // NETTOYAGE ICI
+            string valStr = CleanValue(sb.ToString());
+
+            if (string.IsNullOrEmpty(valStr))
+            {
+                return defaultValue;
+            }
+
+            // Utilise InvariantCulture pour forcer le point '.'
+            if (float.TryParse(valStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out float result))
+            {
+                return result;
+            }
+
+            if (_debug)
+            {
+                // Affiche l'erreur si même après nettoyage ça ne passe pas
+                GTA.UI.Notification.Show("FLOAT ERROR [" + section + "] " + key + ": '" + valStr + "'");
+            }
+
+            return defaultValue;
+        }
+
+        private int GetIniInt(string file, string section, string key, int defaultValue)
+        {
+            var sb = new StringBuilder(255);
+            GetPrivateProfileString(section, key, "", sb, 255, file);
+            
+            // NETTOYAGE ICI
+            string valStr = CleanValue(sb.ToString());
+
+            if (int.TryParse(valStr, out int val))
+            {
+                return val;
+            }
+            return defaultValue;
+        }
+
+        private bool GetIniBool(string file, string section, string key, bool defaultValue)
+        {
+            var sb = new StringBuilder(255);
+            GetPrivateProfileString(section, key, "", sb, 255, file);
+            
+            // NETTOYAGE ICI
+            string value = CleanValue(sb.ToString()).ToLower();
+
+            if (value == "true" || value == "1") return true;
+            if (value == "false" || value == "0") return false;
+            
+            return defaultValue;
+        }
+
+        // =========================================================================
         //  Config Loading
         // =========================================================================
 
         private void LoadConfig()
-        {
-            ScriptSettings ini = ScriptSettings.Load(INI_PATH);
-
-            _enabled       = ini.GetValue("General", "Enabled", true);
-            _debug         = ini.GetValue("General", "Debug", false);
-            _debugKey      = ParseKey(ini.GetValue("General", "DebugKey", "Insert"));
-            _reloadKey     = ParseKey(ini.GetValue("General", "ReloadKey", "F10"));
-            _spawnDistMin  = ini.GetValue("General", "SpawnDistanceMin", 80.0f);
-            _spawnDistMax  = ini.GetValue("General", "SpawnDistanceMax", 150.0f);
-            _cleanupDist   = ini.GetValue("General", "CleanupDistance", 250.0f);
-            _maxGroups     = ini.GetValue("General", "MaxActiveGroups", 3);
-            _ridersMin     = ini.GetValue("General", "RidersPerGroupMin", 2);
-            _ridersMax     = ini.GetValue("General", "RidersPerGroupMax", 5);
-            _spawnIntervalMs   = ini.GetValue("General", "SpawnIntervalMs", 15000);
-            _destDistMin       = ini.GetValue("General", "DestinationDistanceMin", 300.0f);
-            _destDistMax       = ini.GetValue("General", "DestinationDistanceMax", 700.0f);
-            _applyToNatural    = ini.GetValue("General", "ApplyToNaturalRiders", true);
-            _naturalScanRadius = ini.GetValue("General", "NaturalRiderScanRadius", 150.0f);
-            _spawnSpacing      = ini.GetValue("General", "SpawnSpacing", 3.5f);
-            _wheelieActiveDist = ini.GetValue("General", "WheelieActiveDistance", 80.0f);
-            _defaultActiveHourStart = ini.GetValue("General", "DefaultActiveHourStart", 0);
-            _defaultActiveHourEnd   = ini.GetValue("General", "DefaultActiveHourEnd", 23);
-            _wheelieExcludedModels  = new HashSet<string>(
-                ParseCsv(ini.GetValue("General", "WheelieExcludedModels", ""), true),
+{
+    string fullPath = System.IO.Path.GetFullPath(INI_PATH);
+    
+            _enabled = GetIniBool(fullPath, "General", "Enabled", true);
+            _debug = GetIniBool(fullPath, "General", "Debug", false);
+            _debugKey = ParseKey(GetIniString(fullPath, "General", "DebugKey", "Insert"));
+            _reloadKey = ParseKey(GetIniString(fullPath, "General", "ReloadKey", "F10"));
+            _spawnDistMin = GetIniFloat(fullPath, "General", "SpawnDistanceMin", 80.0f);
+            _spawnDistMax = GetIniFloat(fullPath, "General", "SpawnDistanceMax", 150.0f);
+            _cleanupDist = GetIniFloat(fullPath, "General", "CleanupDistance", 250.0f);
+            _maxGroups = GetIniInt(fullPath, "General", "MaxActiveGroups", 3);
+            _ridersMin = GetIniInt(fullPath, "General", "RidersPerGroupMin", 2);
+            _ridersMax = GetIniInt(fullPath, "General", "RidersPerGroupMax", 5);
+            _spawnIntervalMs = GetIniInt(fullPath, "General", "SpawnIntervalMs", 15000);
+            _destDistMin = GetIniFloat(fullPath, "General", "DestinationDistanceMin", 300.0f);
+            _destDistMax = GetIniFloat(fullPath, "General", "DestinationDistanceMax", 700.0f);
+            _applyToNatural = GetIniBool(fullPath, "General", "ApplyToNaturalRiders", true);
+            _naturalScanRadius = GetIniFloat(fullPath, "General", "NaturalRiderScanRadius", 150.0f);
+            _spawnSpacing = GetIniFloat(fullPath, "General", "SpawnSpacing", 3.5f);
+            _wheelieActiveDist = GetIniFloat(fullPath, "General", "WheelieActiveDistance", 80.0f);
+            _defaultActiveHourStart = GetIniInt(fullPath, "General", "DefaultActiveHourStart", 0);
+            _defaultActiveHourEnd = GetIniInt(fullPath, "General", "DefaultActiveHourEnd", 23);
+            _wheelieExcludedModels = new HashSet<string>(
+                ParseCsv(GetIniString(fullPath, "General", "WheelieExcludedModels", ""), true),
                 StringComparer.OrdinalIgnoreCase);
 
             // Test mode
-            _testMode        = ini.GetValue("TestMode", "Enabled", false);
-            _forceSpawnKey   = ParseKey(ini.GetValue("TestMode", "ForceSpawnKey", "NumPad1"));
-            _cleanAllKey     = ParseKey(ini.GetValue("TestMode", "CleanAllKey", "NumPad0"));
+            _testMode = GetIniBool(fullPath, "TestMode", "Enabled", false);
+            _forceSpawnKey = ParseKey(GetIniString(fullPath, "TestMode", "ForceSpawnKey", "NumPad1"));
+            _cleanAllKey = ParseKey(GetIniString(fullPath, "TestMode", "CleanAllKey", "NumPad0"));
             _forceSpawnGroupIndex = 0;
 
             // Follow Player
-            _followEnabled          = ini.GetValue("FollowPlayer", "Enabled", false);
-            _followToggleKey        = ParseKey(ini.GetValue("FollowPlayer", "ToggleKey", "F5"));
-            string followMode       = ini.GetValue("FollowPlayer", "Mode", "Dynamic");
-            _followTrigger          = followMode.Equals("Proximity", StringComparison.OrdinalIgnoreCase)
-                                        ? FollowTrigger.Proximity : FollowTrigger.Dynamic;
-            _followRadius           = ini.GetValue("FollowPlayer", "FollowRadius", 60.0f);
-            _followLoseRadius       = ini.GetValue("FollowPlayer", "LoseRadius", 200.0f);
-            _dynamicSpeedThreshold  = ini.GetValue("FollowPlayer", "DynamicMinSpeed", 5.0f);
-            _dynamicTriggerMs       = ini.GetValue("FollowPlayer", "DynamicTriggerMs", 2000);
-            _playerVehicleType      = ini.GetValue("FollowPlayer", "PlayerVehicleType", "Any");
-            string dismountMode     = ini.GetValue("FollowPlayer", "DismountBehavior", "Freestyle");
+            _followEnabled = GetIniBool(fullPath, "FollowPlayer", "Enabled", false);
+            _followToggleKey = ParseKey(GetIniString(fullPath, "FollowPlayer", "ToggleKey", "F5"));
+            string followMode = GetIniString(fullPath, "FollowPlayer", "Mode", "Dynamic");
+            _followTrigger = followMode.Equals("Proximity", StringComparison.OrdinalIgnoreCase)
+                ? FollowTrigger.Proximity : FollowTrigger.Dynamic;
+            _followRadius = GetIniFloat(fullPath, "FollowPlayer", "FollowRadius", 60.0f);
+            _followLoseRadius = GetIniFloat(fullPath, "FollowPlayer", "LoseRadius", 200.0f);
+            _dynamicSpeedThreshold = GetIniFloat(fullPath, "FollowPlayer", "DynamicMinSpeed", 5.0f);
+            _dynamicTriggerMs = GetIniInt(fullPath, "FollowPlayer", "DynamicTriggerMs", 2000);
+            _playerVehicleType = GetIniString(fullPath, "FollowPlayer", "PlayerVehicleType", "Any");
+            string dismountMode = GetIniString(fullPath, "FollowPlayer", "DismountBehavior", "Freestyle");
             if (dismountMode.Equals("Continue", StringComparison.OrdinalIgnoreCase))
                 _dismountBehavior = DismountBehavior.Continue;
             else if (dismountMode.Equals("Freestyle", StringComparison.OrdinalIgnoreCase))
                 _dismountBehavior = DismountBehavior.Freestyle;
             else
                 _dismountBehavior = DismountBehavior.Wait;
-            _idleScenarios          = ParseCsv(ini.GetValue("FollowPlayer", "IdleScenarios",
+            _idleScenarios = ParseCsv(GetIniString(fullPath, "FollowPlayer", "IdleScenarios",
                 "WORLD_HUMAN_SMOKING, WORLD_HUMAN_STAND_MOBILE, WORLD_HUMAN_LEANING"));
-            _idleDelayMs            = ini.GetValue("FollowPlayer", "IdleDelayMs", 5000);
-            _resumeDelayMs          = ini.GetValue("FollowPlayer", "ResumeDelayMs", 2000);
-            _idleScenarioDist       = ini.GetValue("FollowPlayer", "IdleScenarioDistance", 8.0f);
-            _idleFollowDist         = ini.GetValue("FollowPlayer", "IdleFollowDistance", 15.0f);
-            _idleMinStayDist        = ini.GetValue("FollowPlayer", "IdleMinStayDistance", 6.0f);
-            _idleScenarioWaitMs     = ini.GetValue("FollowPlayer", "IdleScenarioWaitMs", 4000);
+            _idleDelayMs = GetIniInt(fullPath, "FollowPlayer", "IdleDelayMs", 5000);
+            _resumeDelayMs = GetIniInt(fullPath, "FollowPlayer", "ResumeDelayMs", 2000);
+            _idleScenarioDist = GetIniFloat(fullPath, "FollowPlayer", "IdleScenarioDistance", 8.0f);
+            _idleFollowDist = GetIniFloat(fullPath, "FollowPlayer", "IdleFollowDistance", 15.0f);
+            _idleMinStayDist = GetIniFloat(fullPath, "FollowPlayer", "IdleMinStayDistance", 6.0f);
+            _idleScenarioWaitMs = GetIniInt(fullPath, "FollowPlayer", "IdleScenarioWaitMs", 4000);
+            _followMinDistance = GetIniInt(fullPath, "FollowPlayer", "FollowMinDistance", 15);
 
             // Bodyguard
-            _bodyguardEnabled       = ini.GetValue("FollowPlayer", "BodyguardEnabled", true);
-            _bodyguardRadius        = ini.GetValue("FollowPlayer", "BodyguardRadius", 30.0f);
-            _bodyguardDurationMs    = ini.GetValue("FollowPlayer", "BodyguardDurationMs", 15000);
+            _bodyguardEnabled = GetIniBool(fullPath, "FollowPlayer", "BodyguardEnabled", true);
+            _bodyguardRadius = GetIniFloat(fullPath, "FollowPlayer", "BodyguardRadius", 30.0f);
+            _bodyguardDurationMs = GetIniInt(fullPath, "FollowPlayer", "BodyguardDurationMs", 15000);
 
             // Police pursuit persistence
-            _policePursuitRadius        = ini.GetValue("DefaultWheelie", "PolicePursuitRadius", 100.0f);
-            _policePursuitMinDurationMs = ini.GetValue("DefaultWheelie", "PolicePursuitMinDuration", 15000);
+            _policePursuitRadius = GetIniFloat(fullPath, "DefaultWheelie", "PolicePursuitRadius", 100.0f);
+            _policePursuitMinDurationMs = GetIniInt(fullPath, "DefaultWheelie", "PolicePursuitMinDuration", 15000);
 
-            _defaultWheelie = ReadWheelieSection(ini, "DefaultWheelie", null);
+            _defaultWheelie = ReadWheelieSection(fullPath, "DefaultWheelie", null);
 
-            _bikeConfigs.Clear();
-            string overrides = ini.GetValue("General", "BikeOverrides", "");
-            if (!string.IsNullOrEmpty(overrides))
+            if (_debug)
+                GTA.UI.Notification.Show($"Default TargetPitch loaded: {_defaultWheelie.TargetPitch}");
+
+            // 5. Bike Overrides (C'est ici que le fix est important)
+    _bikeConfigs.Clear();
+    string overrides = GetIniString(fullPath, "General", "BikeOverrides", "");
+    
+    if (overrides.Length > 0)
+    {
+        foreach (string raw in overrides.Split(','))
+        {
+            string key = raw.Trim().ToUpperInvariant(); // ex: SANCHEZ2
+            if (key.Length > 0)
             {
-                foreach (string raw in overrides.Split(','))
+                // Construit le nom de section: "Bike_SANCHEZ2"
+                string sectionName = "Bike_" + key;
+                
+                // Charge la config en héritant de _defaultWheelie
+                WheelieConfig overrideCfg = ReadWheelieSection(fullPath, sectionName, _defaultWheelie);
+                _bikeConfigs[key] = overrideCfg;
+
+                if (_debug)
                 {
-                    string key = raw.Trim().ToUpperInvariant();
-                    if (key.Length > 0)
-                        _bikeConfigs[key] = ReadWheelieSection(ini, "Bike_" + key, _defaultWheelie);
+                    Notification.PostTicker("Loaded override: " + key + " | TargetPitch: " + overrideCfg.TargetPitch, true);
                 }
             }
+        }
+    }
 
             _groupConfigs.Clear();
-            string groupList = ini.GetValue("General", "Groups", "");
+            string groupList = GetIniString(fullPath, "General", "Groups", "");
             if (!string.IsNullOrEmpty(groupList))
             {
                 foreach (string raw in groupList.Split(','))
@@ -186,19 +299,19 @@ namespace StreetRiders
                     string section = "Group_" + name;
                     var cfg = new GroupConfig
                     {
-                        Name       = name,
-                        Enabled    = ini.GetValue(section, "Enabled", true),
-                        Weight     = ini.GetValue(section, "Chance", 10),
-                        PedModels  = ParseCsv(ini.GetValue(section, "PedModels", "")),
-                        BikeModels = ParseCsv(ini.GetValue(section, "BikeModels", ""), true),
-                        Zones      = ParseCsv(ini.GetValue(section, "Zones", ""), true),
-                        DoWheelie  = ini.GetValue(section, "DoWheelie", true),
-                        ActiveHourStart = ini.GetValue(section, "ActiveHourStart", _defaultActiveHourStart),
-                        ActiveHourEnd   = ini.GetValue(section, "ActiveHourEnd",   _defaultActiveHourEnd),
-                        Weapons    = ParseCsv(ini.GetValue(section, "Weapons", "")),
-                        CanFollowPlayer = ini.GetValue(section, "CanFollowPlayer", false),
-                        MixedVehicles   = ini.GetValue(section, "MixedVehicles", false),
-                        BikeColors      = ParseIntCsv(ini.GetValue(section, "BikeColors", ""))
+                        Name = name,
+                        Enabled = GetIniBool(fullPath, section, "Enabled", true),
+                        Weight = GetIniInt(fullPath, section, "Chance", 10),
+                        PedModels = ParseCsv(GetIniString(fullPath, section, "PedModels", "")),
+                        BikeModels = ParseCsv(GetIniString(fullPath, section, "BikeModels", ""), true),
+                        Zones = ParseCsv(GetIniString(fullPath, section, "Zones", ""), true),
+                        DoWheelie = GetIniBool(fullPath, section, "DoWheelie", true),
+                        ActiveHourStart = GetIniInt(fullPath, section, "ActiveHourStart", _defaultActiveHourStart),
+                        ActiveHourEnd = GetIniInt(fullPath, section, "ActiveHourEnd", _defaultActiveHourEnd),
+                        Weapons = ParseCsv(GetIniString(fullPath, section, "Weapons", "")),
+                        CanFollowPlayer = GetIniBool(fullPath, section, "CanFollowPlayer", false),
+                        MixedVehicles = GetIniBool(fullPath, section, "MixedVehicles", false),
+                        BikeColors = ParseIntCsv(GetIniString(fullPath, section, "BikeColors", ""))
                     };
 
                     if (cfg.Enabled && cfg.PedModels.Count > 0 && cfg.BikeModels.Count > 0)
@@ -210,71 +323,72 @@ namespace StreetRiders
             {
                 _groupConfigs.Add(new GroupConfig
                 {
-                    Name       = "Default",
-                    Enabled    = true,
-                    Weight     = 10,
-                    PedModels  = new List<string> { "a_m_y_stbla_01", "a_m_y_stbla_02" },
-                    BikeModels = new List<string> { "BATI", "PCJ", "SANCHEZ" },
-                    Zones      = new List<string>(),
-                    DoWheelie  = true,
+                    Name = "Default",
+                    Enabled = true,
+                    Weight = 10,
+                    PedModels = new List<string> { "a_m_y_stbla_01", "a_m_y_stbla_02" },
+                    BikeModels = new List<string> { "SANCHEZ2" },
+                    Zones = new List<string>(),
+                    DoWheelie = true,
                     ActiveHourStart = _defaultActiveHourStart,
-                    ActiveHourEnd   = _defaultActiveHourEnd
+                    ActiveHourEnd = _defaultActiveHourEnd
                 });
             }
         }
 
-        private WheelieConfig ReadWheelieSection(ScriptSettings ini, string section, WheelieConfig fb)
+        private WheelieConfig ReadWheelieSection(string fullPath, string section, WheelieConfig fb)
         {
             return new WheelieConfig
             {
                 // Core
-                LiftForce       = ini.GetValue(section, "LiftForce",          fb?.LiftForce       ?? 0.6f),
-                TorqueOffset    = ini.GetValue(section, "TorqueOffset",       fb?.TorqueOffset    ?? 2.0f),
-                PulseIntervalMs = ini.GetValue(section, "PulseIntervalMs",    fb?.PulseIntervalMs ?? 100),
-                MinSpeed        = ini.GetValue(section, "MinSpeed",           fb?.MinSpeed        ?? 12.0f),
+                LiftForce = GetIniFloat(fullPath, section, "LiftForce", fb?.LiftForce ?? 0.6f),
+                TorqueOffset = GetIniFloat(fullPath, section, "TorqueOffset", fb?.TorqueOffset ?? 2.0f),
+                PulseIntervalMs = GetIniInt(fullPath, section, "PulseIntervalMs", fb?.PulseIntervalMs ?? 100),
+                MinSpeed = GetIniFloat(fullPath, section, "MinSpeed", fb?.MinSpeed ?? 12.0f),
 
                 // Pitch
-                TargetPitch     = ini.GetValue(section, "TargetPitch",        fb?.TargetPitch     ?? 35.0f),
-                MaxPitch        = ini.GetValue(section, "MaxPitch",           fb?.MaxPitch        ?? 43.0f),
+                TargetPitch = GetIniFloat(fullPath, section, "TargetPitch", fb?.TargetPitch ?? 40.0f),
+                MaxPitch = GetIniFloat(fullPath, section, "MaxPitch", fb?.MaxPitch ?? 43.0f),
 
                 // Timing
-                AttemptDurMin   = ini.GetValue(section, "AttemptDurationMin",  fb?.AttemptDurMin   ?? 1000),
-                AttemptDurMax   = ini.GetValue(section, "AttemptDurationMax",  fb?.AttemptDurMax   ?? 3000),
-                SustainDurMin   = ini.GetValue(section, "SustainDurationMin",  fb?.SustainDurMin  ?? 2500),
-                SustainDurMax   = ini.GetValue(section, "SustainDurationMax",  fb?.SustainDurMax  ?? 5000),
-                DelayMin        = ini.GetValue(section, "AttemptDelayMin",      fb?.DelayMin       ?? 1000),
-                DelayMax        = ini.GetValue(section, "AttemptDelayMax",      fb?.DelayMax       ?? 5000),
-                AttemptsMin     = ini.GetValue(section, "AttemptsMin",          fb?.AttemptsMin    ?? 1),
-                AttemptsMax     = ini.GetValue(section, "AttemptsMax",          fb?.AttemptsMax    ?? 4),
+                AttemptDurMin = GetIniInt(fullPath, section, "AttemptDurationMin", fb?.AttemptDurMin ?? 1000),
+                AttemptDurMax = GetIniInt(fullPath, section, "AttemptDurationMax", fb?.AttemptDurMax ?? 3000),
+                SustainDurMin = GetIniInt(fullPath, section, "SustainDurationMin", fb?.SustainDurMin ?? 2500),
+                SustainDurMax = GetIniInt(fullPath, section, "SustainDurationMax", fb?.SustainDurMax ?? 5000),
+                DelayMin = GetIniInt(fullPath, section, "AttemptDelayMin", fb?.DelayMin ?? 1000),
+                DelayMax = GetIniInt(fullPath, section, "AttemptDelayMax", fb?.DelayMax ?? 5000),
+                AttemptsMin = GetIniInt(fullPath, section, "AttemptsMin", fb?.AttemptsMin ?? 1),
+                AttemptsMax = GetIniInt(fullPath, section, "AttemptsMax", fb?.AttemptsMax ?? 4),
 
                 // Safety
-                RaycastDist     = ini.GetValue(section, "RaycastDistance",      fb?.RaycastDist    ?? 15.0f),
-                MaxSteerAngle   = ini.GetValue(section, "MaxSteeringAngle",    fb?.MaxSteerAngle  ?? 8.0f),
-                BrakeThreshold  = ini.GetValue(section, "BrakeThreshold",      fb?.BrakeThreshold ?? 0.5f),
+                RaycastDist = GetIniFloat(fullPath, section, "RaycastDistance", fb?.RaycastDist ?? 15.0f),
+                MaxSteerAngle = GetIniFloat(fullPath, section, "MaxSteeringAngle", fb?.MaxSteerAngle ?? 8.0f),
+                BrakeThreshold = GetIniFloat(fullPath, section, "BrakeThreshold", fb?.BrakeThreshold ?? 0.5f),
 
                 // Driving
-                DriveSpeed      = ini.GetValue(section, "DriveSpeed",           fb?.DriveSpeed     ?? 80.0f),
-                MaxSpeed        = ini.GetValue(section, "MaxEntitySpeed",       fb?.MaxSpeed       ?? 120.0f),
-                DriveAbility    = ini.GetValue(section, "DriveAbility",         fb?.DriveAbility   ?? 1.0f),
-                DriveAggressiveness = ini.GetValue(section, "DriveAggressiveness", fb?.DriveAggressiveness ?? 1.0f),
-                DrivingFlags    = ini.GetValue(section, "DrivingFlags",         fb?.DrivingFlags   ?? 786603),
+                DriveSpeed = GetIniFloat(fullPath, section, "DriveSpeed", fb?.DriveSpeed ?? 80.0f),
+                MaxSpeed = GetIniFloat(fullPath, section, "MaxEntitySpeed", fb?.MaxSpeed ?? 120.0f),
+                DriveAbility = GetIniFloat(fullPath, section, "DriveAbility", fb?.DriveAbility ?? 1.0f),
+                DriveAggressiveness = GetIniFloat(fullPath, section, "DriveAggressiveness", fb?.DriveAggressiveness ?? 1.0f),
+                DrivingFlags = GetIniInt(fullPath, section, "DrivingFlags", fb?.DrivingFlags ?? 786603),
 
                 // Ped Behavior
-                BlockNonTempEvents    = ini.GetValue(section, "BlockNonTempEvents",    fb?.BlockNonTempEvents    ?? true),
-                FleeAttributes        = ini.GetValue(section, "FleeAttributes",        fb?.FleeAttributes        ?? 0),
-                CombatAttribute       = ini.GetValue(section, "CombatAttribute",       fb?.CombatAttribute       ?? 17),
-                CombatAttributeValue  = ini.GetValue(section, "CombatAttributeValue",  fb?.CombatAttributeValue  ?? false),
-                SuffersCriticalHits   = ini.GetValue(section, "SuffersCriticalHits",   fb?.SuffersCriticalHits   ?? -1),
+                BlockNonTempEvents = GetIniBool(fullPath, section, "BlockNonTempEvents", fb?.BlockNonTempEvents ?? true),
+                FleeAttributes = GetIniInt(fullPath, section, "FleeAttributes", fb?.FleeAttributes ?? 0),
+                CombatAttribute = GetIniInt(fullPath, section, "CombatAttribute", fb?.CombatAttribute ?? 17),
+                CombatAttributeValue = GetIniBool(fullPath, section, "CombatAttributeValue", fb?.CombatAttributeValue ?? false),
+                SuffersCriticalHits = GetIniInt(fullPath, section, "SuffersCriticalHits", fb?.SuffersCriticalHits ?? -1),
 
                 // Remount
-                RemountTimeout        = ini.GetValue(section, "RemountTimeout",        fb?.RemountTimeout        ?? 30000),
-                RemountEnterDistance  = ini.GetValue(section, "RemountEnterDistance",  fb?.RemountEnterDistance  ?? 5.0f),
-                RemountMaxDistance    = ini.GetValue(section, "RemountMaxDistance",    fb?.RemountMaxDistance    ?? 30.0f),
-                RemountMoveSpeed      = ini.GetValue(section, "RemountMoveSpeed",      fb?.RemountMoveSpeed      ?? 2.0f),
-                RemountTaskCooldown   = ini.GetValue(section, "RemountTaskCooldown",   fb?.RemountTaskCooldown   ?? 5000),
+                RemountTimeout = GetIniInt(fullPath, section, "RemountTimeout", fb?.RemountTimeout ?? 30000),
+                RemountEnterDistance = GetIniFloat(fullPath, section, "RemountEnterDistance", fb?.RemountEnterDistance ?? 5.0f),
+                RemountMaxDistance = GetIniFloat(fullPath, section, "RemountMaxDistance", fb?.RemountMaxDistance ?? 30.0f),
+                RemountMoveSpeed = GetIniFloat(fullPath, section, "RemountMoveSpeed", fb?.RemountMoveSpeed ?? 2.0f),
+                RemountTaskCooldown = GetIniInt(fullPath, section, "RemountTaskCooldown", fb?.RemountTaskCooldown ?? 5000),
+                RemountForceTimeout = GetIniInt(fullPath, section, "RemountForceTimeout", fb?.RemountForceTimeout ?? 10000),
 
                 // Police
-                AllowPoliceArrest = ini.GetValue(section, "AllowPoliceArrest", fb?.AllowPoliceArrest ?? true)
+                AllowPoliceArrest = GetIniBool(fullPath, section, "AllowPoliceArrest", fb?.AllowPoliceArrest ?? true)
             };
         }
 

@@ -136,6 +136,35 @@ namespace StreetRiders
                 if (leaderBike != null && leaderBike.Exists())
                     leaderPed = leaderBike.Driver;
 
+                    // --- AJOUTER ICI : Détection Leader Stuck ---
+                // --- DÉTECTION LEADER STUCK (Vitesse < 1.5 m/s) ---
+                if (leaderPed != null && leaderPed.Exists() && leaderPed.IsAlive && leaderPed.IsInVehicle())
+                {
+                    Vehicle lv = leaderPed.CurrentVehicle;
+                    // Si le véhicule roule à moins de 5 km/h (environ 1.5 m/s)
+                    // ET qu'on n'est PAS en train d'attendre le joueur à l'arrêt
+                    if (lv.Speed < 1.5f && group.FollowMode != GroupFollowMode.WaitingForPlayer)
+                    {
+                        if (group.LeaderStuckStartTime == 0) group.LeaderStuckStartTime = now;
+                        
+                        // Si bloqué depuis plus de 8 secondes (8000ms)
+                        if (now - group.LeaderStuckStartTime > 8000)
+                        {
+                            PromoteNewLeader(group);
+                            group.LeaderStuckStartTime = 0;
+                            if (_debug) Notification.PostTicker("~o~Follow: Leader stuck (speed 0), promoting new one", true);
+                            
+                            // Force le retask immédiat
+                            RetaskEntireGroup(group);
+                            continue;
+                        }
+                    }
+                    else
+                    {
+                        group.LeaderStuckStartTime = 0; // Il roule, on reset
+                    }
+                }
+
                 // =====================================================================
                 //  AUTONOMOUS -> check for follow trigger
                 // =====================================================================
@@ -267,6 +296,70 @@ namespace StreetRiders
                             Notification.PostTicker($"~o~Follow: {group.ConfigName} stopped (wrong vehicle)", true);
                         continue;
                     }
+
+                    // ... (code existant: check playerInValidVehicle) ...
+
+                    // =========================================================================
+                    // LOGIQUE DE RATTRAPAGE / ANTI-ÉPARPILLEMENT
+                    // Vérifie toutes les 1s si un motard est trop loin (> 60m)
+                    // =========================================================================
+                    if (now % 1000 < 50) // Check toutes les secondes environ
+                    {
+                        Vehicle grpLeaderBike = (Vehicle)Entity.FromHandle(group.LeaderBikeHandle);
+                        
+                        if (grpLeaderBike != null && grpLeaderBike.Exists())
+                        {
+                            Vector3 leaderPos = grpLeaderBike.Position;
+                            for (int r = 0; r < group.PedHandles.Count; r++)
+                            {
+                                Ped rp = (Ped)Entity.FromHandle(group.PedHandles[r]);
+                                // On ne touche pas au leader, ni aux morts, ni aux piétons (ils sont gérés par HandleRemount)
+                                if (rp == null || !rp.Exists() || !rp.IsAlive || !rp.IsInVehicle() || rp.CurrentVehicle.Handle == group.LeaderBikeHandle) 
+                                    continue;
+
+                                float distToLeader = rp.Position.DistanceTo(grpLeaderBike.Position);
+
+                                // CAS 1 : Il est loin (> 60m) -> On force le rattrapage (CATCH UP)
+                                if (distToLeader > 60.0f)
+                                {
+                                    RiderState st;
+                                    _riders.TryGetValue(rp.Handle, out st);
+                                    WheelieConfig cfg = GetWheelieConfig(st?.BikeModel ?? "");
+                                    // On lui donne l'ordre de rouler VERS le leader (pas le suivre, le rejoindre)
+                                    // Avec des flags agressifs pour ignorer le trafic et rattraper vite
+                                    // On utilise la native que tu as citée pour foncer vers la position du leader
+                                    Function.Call(Hash.TASK_VEHICLE_DRIVE_TO_COORD, 
+                                        rp.Handle, 
+                                        rp.CurrentVehicle.Handle, 
+                                        leaderPos.X, leaderPos.Y, leaderPos.Z, 
+                                        cfg.DriveSpeed * 1.2f, // Il fonce un peu plus vite pour rattraper
+                                        1.0f, 
+                                        rp.CurrentVehicle.Model.Hash, 
+                                        1074528293, // DrivingMode agressif pour doubler le trafic
+                                        5.0f,       // stopRange
+                                        true);
+                                    
+                                    if (_debug) Notification.PostTicker($"~y~Rider catching up ({distToLeader:0}m)", true);
+                                }
+                                // CAS 2 : Il est revenu (< 50m) mais n'a pas la tâche Follow -> On remet en formation
+                                else if (distToLeader < 50.0f)
+                                {
+                                    // Si sa tâche n'est pas "Follow Vehicle" (ID 169 ou similaire), on le remet dans le rang
+                                    // Le moyen simple est de forcer le retask s'il était en mode rattrapage
+                                    // Ici, on réapplique simplement le Follow standard s'il est proche
+                                    RiderState st;
+                                    _riders.TryGetValue(rp.Handle, out st);
+                                    WheelieConfig cfg = GetWheelieConfig(st?.BikeModel ?? "");
+
+                                    // On réassigne TASK_VEHICLE_FOLLOW pour qu'il se cale à la vitesse du groupe
+                                    Function.Call((Hash)0xFC545A9F0626E3B6, 
+                                        rp.Handle, rp.CurrentVehicle.Handle, grpLeaderBike.Handle,
+                                        cfg.DriveSpeed, cfg.DrivingFlags, _followMinDistance);
+                                }
+                            }
+                        }
+                    }
+                    // =========================================================================
 
                     // Decision cooldown — don't re-evaluate lose conditions too soon after entering follow
                     if (now - group.LastDecisionTime < _dynamicTriggerMs)
@@ -540,23 +633,24 @@ namespace StreetRiders
                 _riders.TryGetValue(ped.Handle, out st);
                 WheelieConfig cfg = GetWheelieConfig(st?.BikeModel ?? "");
 
+                // TASK_VEHICLE_FOLLOW: proper pathfinding, follows target entity on road
+                // Uses DrivingFlags from INI (cfg) for driving style
                 if (bike.Handle == group.LeaderBikeHandle)
                 {
-                    // Leader escorts player's vehicle
-                    Function.Call(Hash.TASK_VEHICLE_ESCORT,
+                    // Leader follows player's vehicle
+                    Function.Call((Hash)0xFC545A9F0626E3B6, // TASK_VEHICLE_FOLLOW
                         ped.Handle, bike.Handle, playerVeh.Handle,
-                        -1, cfg.DriveSpeed, cfg.DrivingFlags, 8.0f, 0, 500.0f);
+                        cfg.DriveSpeed, cfg.DrivingFlags, _followMinDistance);
                 }
                 else
                 {
-                    // Followers escort the leader
+                    // Followers follow the leader bike
                     Vehicle lb = (Vehicle)Entity.FromHandle(group.LeaderBikeHandle);
                     if (lb != null && lb.Exists())
                     {
-                        int escortMode = (i % 3 == 0) ? -1 : (i % 3 == 1) ? 2 : 3;
-                        Function.Call(Hash.TASK_VEHICLE_ESCORT,
+                        Function.Call((Hash)0xFC545A9F0626E3B6, // TASK_VEHICLE_FOLLOW
                             ped.Handle, bike.Handle, lb.Handle,
-                            escortMode, cfg.DriveSpeed, cfg.DrivingFlags, 8.0f, 0, 500.0f);
+                            cfg.DriveSpeed, cfg.DrivingFlags, _followMinDistance);
                     }
                 }
                 Function.Call(Hash.SET_ENTITY_MAX_SPEED, bike.Handle, cfg.MaxSpeed);
@@ -573,26 +667,16 @@ namespace StreetRiders
             float headingA, headingB;
 
             // Point A: close road node (~10-25m from player)
-            if (!FindRoadNode(playerPos, 10f, 25f, out nodeA, out headingA))
+            if (!FindRoadNode(playerPos, 25f, 50f, out nodeA, out headingA))
                 nodeA = playerPos;
 
             // Point B: further road node (~40-65m from player)
-            if (!FindRoadNode(playerPos, 40f, 65f, out nodeB, out headingB))
+            if (!FindRoadNode(playerPos, 25f, 50f, out nodeB, out headingB))
             {
                 // Fallback: offset from point A
                 nodeB = nodeA + new Vector3(50f, 0f, 0f);
             }
-
-            // If both points ended up too close (<20m), push B further along A→B direction
-            if (nodeA.DistanceTo(nodeB) < 20f)
-            {
-                Vector3 dir = (nodeB - nodeA);
-                if (dir.Length() > 0.1f)
-                    nodeB = nodeA + Vector3.Normalize(dir) * 55f;
-                else
-                    nodeB = nodeA + new Vector3(55f, 0f, 0f);
-            }
-
+            
             group.FreestylePointA = nodeA;
             group.FreestylePointB = nodeB;
             group.FreestyleLastRefresh = Game.GameTime;

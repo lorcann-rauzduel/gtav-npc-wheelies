@@ -33,6 +33,7 @@ namespace StreetRiders
             public Vector3 FreestylePointB;   // Further waypoint on nearby road
             public int FreestyleLastRefresh;  // GameTime when waypoints were last updated
             public int FreestyleLastRetask;   // GameTime of last retask (grace period for idle check)
+            public int LeaderStuckStartTime;
         }
     }
 }

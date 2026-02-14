@@ -24,6 +24,21 @@ namespace StreetRiders
             // Positive wheelie angle (0 = flat, 35 = nice wheelie)
             float pitch = Math.Abs(rawPitch);
 
+            // Pitch check
+            if (pitch > cfg.MaxPitch)
+            {
+                // Apply downward force to bring the bike down
+                float excessPitch = pitch - cfg.MaxPitch;
+                float correctionForce = cfg.LiftForce * 0.9f * (excessPitch / 10f); // Progressive correction
+                
+                bike.ApplyForceRelative(
+                    new Vector3(0f, 0f, -correctionForce), // Negative Z = down
+                    new Vector3(0f, cfg.TorqueOffset, 0f));
+                
+                state.LastForceApplied = -correctionForce;
+                _wheelieSkipReason = "PITCH";
+            }
+
             // --- Speed check ---
             if (speed < cfg.MinSpeed)
             {
@@ -144,16 +159,16 @@ namespace StreetRiders
                 float pitchRate = (pitch - prevPitch) / dt; // deg/sec
 
                 // --- Smooth pitch multiplier with velocity damping ---
+                // NO gravity compensation — LiftForce directly controls the max angle:
+                //   small LiftForce → gravity wins early → low wheelie
+                //   large LiftForce → overcomes gravity → reaches TargetPitch
+                // Force is scaled by 100 so INI values 0.01-1.0 produce visible results.
+                //
                 // 0..fadeStart:       full force, dampened by rise rate
                 // fadeStart..target:  progressive fade + velocity damping
                 // target..max:        coast zone (no force, gravity settles)
-                // above max:          gentle correction
-                //
-                // Gravity compensation: as the bike tilts, gravity torque grows
-                // proportionally to sin(pitch). Without compensation, the bike
-                // hits a ceiling around 35 deg regardless of config. The gravComp
-                // factor automatically scales up the force to match, so LiftForce
-                // and TargetPitch actually control the wheelie angle as expected.
+                // above max:          gentle push-down correction
+                const float ForceScale = 2.5f;
                 float fadeStart = cfg.TargetPitch * 0.5f;
                 float pitchMult;
 
@@ -167,7 +182,7 @@ namespace StreetRiders
                 {
                     // Approaching target: fade force out progressively
                     float t = (pitch - fadeStart) / Math.Max(1f, cfg.TargetPitch - fadeStart);
-                    float baseFade = 1f - t * 0.9f; // 1.0 at fadeStart -> 0.1 at target
+                    float baseFade = 1f - t * 0.85f; // 1.0 at fadeStart -> 0.15 at target
                     float velDamp = Clamp01(1f - pitchRate / 120f);
                     pitchMult = baseFade * velDamp;
                 }
@@ -183,30 +198,31 @@ namespace StreetRiders
 
                 if (pitchMult > 0.01f)
                 {
-                    // Gravity compensation: counteract increasing gravity torque at higher angles
-                    float pitchRad = pitch * (float)(Math.PI / 180.0);
-                    float gravComp = 1f + (float)Math.Sin(pitchRad) * 2.0f;
-
-                    float force = cfg.LiftForce * pitchMult * gravComp;
+                    float force = cfg.LiftForce * pitchMult * ForceScale;
                     state.LastForceApplied = force;
 
-                    bike.ApplyForceRelative(
-                        new Vector3(0f, 0f, force),
-                        new Vector3(0f, cfg.TorqueOffset, 0f)
-                    );
+                    Function.Call(Hash.APPLY_FORCE_TO_ENTITY,
+                        bike.Handle,
+                        1,                             // forceType 1 (external force, one frame)
+                        0f, 0f, force,                 // force Z = up in local space
+                        0f, cfg.TorqueOffset, 0f,      // offset Y = forward along bike
+                        0,                             // boneIndex
+                        true, true, true, false, true);
                 }
                 else if (pitch >= cfg.MaxPitch)
                 {
-                    // Over max: gentle correction proportional to overshoot
-                    // Much softer than before — let gravity do most of the work
+                    // Over max: push-down correction proportional to overshoot
                     float overshoot = (pitch - cfg.MaxPitch) / 10f;
-                    float correction = cfg.LiftForce * 0.4f * Math.Min(overshoot, 1.0f);
+                    float correction = cfg.LiftForce * ForceScale * 0.6f * Math.Min(overshoot, 1.0f);
                     state.LastForceApplied = -correction;
 
-                    bike.ApplyForceRelative(
-                        new Vector3(0f, 0f, -correction),
-                        new Vector3(0f, cfg.TorqueOffset, 0f)
-                    );
+                    Function.Call(Hash.APPLY_FORCE_TO_ENTITY,
+                        bike.Handle,
+                        1,
+                        0f, 0f, -correction,
+                        0f, cfg.TorqueOffset, 0f,
+                        0,
+                        true, true, true, false, true);
                 }
                 else
                 {

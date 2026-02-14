@@ -181,9 +181,9 @@ namespace StreetRiders
                 _riders.TryGetValue(f.Handle, out fs);
                 WheelieConfig fc = GetWheelieConfig(fs?.BikeModel ?? "");
 
-                Function.Call(Hash.TASK_VEHICLE_ESCORT,
+                Function.Call((Hash)0xFC545A9F0626E3B6, // TASK_VEHICLE_FOLLOW
                     f.Handle, fb.Handle, newBike.Handle,
-                    -1, fc.DriveSpeed, fc.DrivingFlags, 8.0f, 0, 20.0f);
+                    fc.DriveSpeed, fc.DrivingFlags, _followMinDistance);
             }
 
             if (_debug)
@@ -242,9 +242,9 @@ namespace StreetRiders
                 {
                     Vehicle lb = (Vehicle)Entity.FromHandle(group.LeaderBikeHandle);
                     if (lb != null && lb.Exists())
-                        Function.Call(Hash.TASK_VEHICLE_ESCORT,
+                        Function.Call((Hash)0xFC545A9F0626E3B6, // TASK_VEHICLE_FOLLOW
                             ped.Handle, bike.Handle, lb.Handle,
-                            -1, cfg.DriveSpeed, cfg.DrivingFlags, 8.0f, 0, 20.0f);
+                            cfg.DriveSpeed, cfg.DrivingFlags, _followMinDistance);
                 }
                 Function.Call(Hash.SET_ENTITY_MAX_SPEED, bike.Handle, cfg.MaxSpeed);
             }

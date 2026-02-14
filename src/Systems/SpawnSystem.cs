@@ -216,10 +216,9 @@ namespace StreetRiders
                 }
                 else if (leaderBike != null)
                 {
-                    int escortMode = (i % 3 == 0) ? -1 : (i % 3 == 1) ? 2 : 3;
-                    Function.Call(Hash.TASK_VEHICLE_ESCORT,
+                    Function.Call((Hash)0xFC545A9F0626E3B6, // TASK_VEHICLE_FOLLOW
                         ped.Handle, bike.Handle, leaderBike.Handle,
-                        escortMode, cfg.DriveSpeed, cfg.DrivingFlags, 8.0f, 0, 20.0f);
+                        cfg.DriveSpeed, cfg.DrivingFlags, _followMinDistance);
                 }
 
                 _riders[ped.Handle] = new RiderState
@@ -506,10 +505,9 @@ namespace StreetRiders
                 }
                 else if (leaderBike != null)
                 {
-                    int escortMode = (i % 3 == 0) ? -1 : (i % 3 == 1) ? 2 : 3;
-                    Function.Call(Hash.TASK_VEHICLE_ESCORT,
+                    Function.Call((Hash)0xFC545A9F0626E3B6, // TASK_VEHICLE_FOLLOW
                         ped.Handle, bike.Handle, leaderBike.Handle,
-                        escortMode, cfg.DriveSpeed, cfg.DrivingFlags, 8.0f, 0, 20.0f);
+                        cfg.DriveSpeed, cfg.DrivingFlags, _followMinDistance);
                 }
 
                 _riders[ped.Handle] = new RiderState

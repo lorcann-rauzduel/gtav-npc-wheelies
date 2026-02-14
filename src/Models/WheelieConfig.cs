@@ -52,6 +52,7 @@ namespace StreetRiders
             public float RemountMaxDistance;
             public float RemountMoveSpeed;
             public int RemountTaskCooldown;
+            public int RemountForceTimeout;  // ms before force-warping rider onto bike (0 = disabled)
 
             // -- Police --
             public bool AllowPoliceArrest;

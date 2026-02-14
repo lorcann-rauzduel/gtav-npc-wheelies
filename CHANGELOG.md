@@ -25,6 +25,7 @@ All notable changes to Street Riders are documented here.
 - Follow/lose conditions: configurable large radius prevents premature abandon
 - Idle scenario timing: riders wait before starting scenarios, follow on foot when player moves
 - Police pursuit: dedicated tracking system prevents target-switching with multiple riders
+- Better pitch control
 
 ### Fixed
 - Riders stuck idle after falling off their bike

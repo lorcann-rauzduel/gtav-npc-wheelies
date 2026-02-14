@@ -16,6 +16,7 @@ namespace StreetRiders
     {
         private void ProcessAllRiders()
         {
+            
             int now = Game.GameTime;
             List<int> handles = new List<int>(_riders.Keys);
 
@@ -36,6 +37,7 @@ namespace StreetRiders
                 RiderState state = _riders[handle];
                 WheelieConfig cfg = GetWheelieConfig(state.BikeModel);
 
+
                 // Skip riders in idle scenarios (waiting for player)
                 if (state.InIdleScenario) continue;
 
@@ -53,7 +55,6 @@ namespace StreetRiders
                 Vehicle bike = ped.CurrentVehicle;
                 if (bike == null || !bike.Model.IsBike) continue;
                 state.LastBikeHandle = bike.Handle;
-
                 // Bike destroyed or submerged: eject ped, make them wander, release naturally
                 if (bike.IsDead || bike.EngineHealth <= 0 || bike.IsInWater)
                 {
@@ -157,9 +158,65 @@ namespace StreetRiders
                 float speed = bike.Speed;
                 float pitch = bike.Rotation.X;
                 state.PedHandle = ped.Handle;
+                // 1. On sauvegarde l'état AVANT le calcul physique
+                Phase oldPhase = state.Phase;
                 
                 // >>> All wheelie logic (raycast, pitch, force) is in Physics/WheeliePhysics.cs <<<
                 TickWheelie(bike, state, speed, pitch, cfg);
+
+                // ==================================================================================
+                // LOGIQUE CONTINUE PENDANT LE WHEELIE
+                // On met à jour la cible régulièrement pour que le NPC ne s'arrête jamais
+                // ==================================================================================
+                if (state.Phase == Phase.Attempting || state.Phase == Phase.Sustained)
+                {
+                    // On throttle (limite) les appels pour ne pas spammer le moteur du jeu (toutes les ~200ms)
+                    if ((Game.GameTime + ped.Handle) % 200 == 0)
+                    {
+                        // 1. Récupération du Leader
+                        ActiveGroup myGroup = null;
+                        foreach (var g in _activeGroups) 
+                        { 
+                            if (g.Id == state.GroupId) { myGroup = g; break; } 
+                        }
+
+                        Vehicle leaderBike = (Vehicle)Entity.FromHandle(myGroup?.LeaderBikeHandle ?? 0);
+                        Vector3 targetPos;
+
+                        // 2. Calcul de la cible : Toujours 60m DEVANT le leader (ou soi-même)
+                        // On réduit à 60m pour mieux suivre les virages, comme on update souvent.
+                        if (leaderBike != null && leaderBike.Exists() && bike.Handle != leaderBike.Handle)
+                        {
+                            targetPos = leaderBike.Position + (leaderBike.ForwardVector * 60.0f);
+                        }
+                        else
+                        {
+                            targetPos = bike.Position + (bike.ForwardVector * 60.0f);
+                        }
+
+                        // 3. Flags "Intelligents" : 4 (Swerve) + 16 (Avoid Peds) + 32 (Avoid Objects) = 52
+                        int smartFlags = 52; 
+
+                        // IMPORTANT : stopRange (p10) mis à 0.0f pour qu'il ne prépare pas d'arrêt
+                        Function.Call(Hash.TASK_VEHICLE_DRIVE_TO_COORD,
+                            ped.Handle, bike.Handle,
+                            targetPos.X, targetPos.Y, targetPos.Z,
+                            cfg.DriveSpeed, 
+                            smartFlags, 
+                            bike.Model.Hash, 
+                            16777216, // Mode de conduite (User defined)
+                            0.0f,     // StopRange = 0 (Ne jamais freiner à l'approche)
+                            -1.0f);   // StraightLineDist
+                    }
+                }
+
+                // ==================================================================================
+                // FIN DU WHEELIE -> RETOUR GROUPE
+                // ==================================================================================
+                else if (oldPhase != Phase.Idle && state.Phase == Phase.Idle)
+                {
+                    RetaskRiderToGroup(ped, state);
+                }
 
                 state.LastPitch = pitch;
                 state.LastSpeed = speed;
@@ -220,12 +277,12 @@ namespace StreetRiders
         private void HandleRemount(Ped ped, RiderState state, WheelieConfig cfg)
         {
             // 1. Safety: Dead - abort remount
-            if (!ped.IsAlive) 
+            if (!ped.IsAlive)
             {
                 state.RemountActive = false;
                 return;
             }
-            
+
             // Wait for ragdoll / getting-up animation to finish
             if (ped.IsRagdoll) return;
             if (Function.Call<bool>(Hash.IS_PED_GETTING_UP, ped.Handle)) return;
@@ -245,8 +302,43 @@ namespace StreetRiders
             int now = Game.GameTime;
             float dist = ped.Position.DistanceTo(bike.Position);
 
+            // 2b. Force-warp: if rider hasn't remounted after RemountForceTimeout, warp onto bike
+            if (cfg.RemountForceTimeout > 0 && (!ped.IsWalking || !ped.IsRunning))
+            {
+                int fallTime = state.RemountTimeout - cfg.RemountTimeout;
+                // Si le temps limite est dépassé
+                if (now > fallTime + cfg.RemountForceTimeout)
+                {
+                    // --- MODIFICATION ICI : DÉBLOCAGE COMPLET ---
+                    Function.Call(Hash.CLEAR_PED_TASKS, ped.Handle); // Reset total
+                    Function.Call(Hash.SET_PED_INTO_VEHICLE, ped.Handle, bike.Handle, -1);
+                    Function.Call(Hash.SET_VEHICLE_HANDBRAKE, bike.Handle, false);
+                    Function.Call(Hash.SET_VEHICLE_ENGINE_ON, bike.Handle, true, true, false); // On force le moteur
+
+                    state.RemountActive = false;
+                    state.RemountLastTaskTime = 0;
+                    state.Phase = Phase.Idle;
+                    state.NextAttemptDelay = now + 3000;
+
+                    ApplyPedFlags(ped, cfg);
+
+                    if (state.IsSpawned)
+                    {
+                        RetaskRiderToGroup(ped, state);
+                        
+                        // "Kickstart" l'IA : on lui dit d'accélérer (Action 1) pendant 1 seconde
+                        // pour être sûr qu'il ne reste pas planté là.
+                        Function.Call(Hash.TASK_VEHICLE_TEMP_ACTION, ped.Handle, bike.Handle, 1, 1000);
+                    }
+                    // --------------------------------------------
+
+                    if (_debug)
+                        Notification.PostTicker($"~o~Remount: FORCE WARP & KICKSTART (timeout {cfg.RemountForceTimeout}ms)", true);
+                    return;
+                }
+            }
+
             // 3. CRITICAL: If TASK_ENTER_VEHICLE (160) is active, let it play out.
-            //    NEVER interrupt an ongoing enter-vehicle animation.
             bool enterTaskActive = Function.Call<bool>(Hash.GET_IS_TASK_ACTIVE, ped.Handle, 160);
             if (enterTaskActive) return;
 
@@ -254,8 +346,6 @@ namespace StreetRiders
             bool goToTaskActive = Function.Call<bool>(Hash.GET_IS_TASK_ACTIVE, ped.Handle, 178);
             if (goToTaskActive)
             {
-                // Task is alive, but check if ped drifted too far (pathfinding fail)
-                // Only intervene after cooldown + ped somehow got further from bike
                 if (dist < cfg.RemountMaxDistance) return; // still walking, let it be
             }
 
@@ -265,27 +355,27 @@ namespace StreetRiders
 
             if (!isFirstTask && !cooldownElapsed) return;
 
-            if (dist < cfg.RemountEnterDistance) 
+            if (dist < cfg.RemountEnterDistance)
             {
-                // Close enough: Enter vehicle directly (no timeout — let ped take their time)
+                // Close enough: Enter vehicle directly
                 Function.Call(Hash.TASK_ENTER_VEHICLE,
                     ped.Handle, bike.Handle, -1, -1, cfg.RemountMoveSpeed, 1, 0);
-                
+
                 state.RemountLastTaskTime = now;
-                
+
                 if (_debug)
                     Notification.PostTicker($"~y~Remount: ENTER_VEHICLE (dist:{dist:F1}m)", true);
             }
-            else if (dist < cfg.RemountMaxDistance) 
+            else if (dist < cfg.RemountMaxDistance)
             {
                 // Too far: Go to bike first
-                Function.Call(Hash.TASK_GO_TO_ENTITY, 
-                    ped.Handle, bike.Handle, -1, 
+                Function.Call(Hash.TASK_GO_TO_ENTITY,
+                    ped.Handle, bike.Handle, -1,
                     cfg.RemountEnterDistance - 1.0f,
                     cfg.RemountMoveSpeed, 1073741824.0f, 0);
-                
+
                 state.RemountLastTaskTime = now;
-                
+
                 if (_debug)
                     Notification.PostTicker($"~y~Remount: GO_TO_ENTITY (dist:{dist:F1}m)", true);
             }
@@ -295,7 +385,7 @@ namespace StreetRiders
                 state.RemountActive = false;
                 ped.Task.Wander();
                 Function.Call(Hash.SET_BLOCKING_OF_NON_TEMPORARY_EVENTS, ped.Handle, false);
-                
+
                 if (_debug)
                     Notification.PostTicker($"~r~Remount: ABANDONED (dist:{dist:F1}m)", true);
             }
@@ -358,7 +448,7 @@ namespace StreetRiders
 
             if (targetGroup == null) return;
 
-            // If the group is following the player, escort player's vehicle instead
+            // If the group is following the player, use TASK_VEHICLE_FOLLOW
             if (targetGroup.FollowMode == GroupFollowMode.FollowingPlayer)
             {
                 Ped player = Game.Player.Character;
@@ -369,25 +459,17 @@ namespace StreetRiders
                     {
                         if (bike.Handle == targetGroup.LeaderBikeHandle)
                         {
-                            Function.Call(Hash.TASK_VEHICLE_ESCORT,
+                            Function.Call((Hash)0xFC545A9F0626E3B6, // TASK_VEHICLE_FOLLOW
                                 ped.Handle, bike.Handle, playerVeh.Handle,
-                                -1, cfg.DriveSpeed, cfg.DrivingFlags, 8.0f, 0, 500.0f);
+                                cfg.DriveSpeed, cfg.DrivingFlags, _followMinDistance);
                         }
                         else
                         {
                             Vehicle lb = (Vehicle)Entity.FromHandle(targetGroup.LeaderBikeHandle);
-                            if (lb != null && lb.Exists())
-                            {
-                                Function.Call(Hash.TASK_VEHICLE_ESCORT,
-                                    ped.Handle, bike.Handle, lb.Handle,
-                                    -1, cfg.DriveSpeed, cfg.DrivingFlags, 8.0f, 0, 500.0f);
-                            }
-                            else
-                            {
-                                Function.Call(Hash.TASK_VEHICLE_ESCORT,
-                                    ped.Handle, bike.Handle, playerVeh.Handle,
-                                    -1, cfg.DriveSpeed, cfg.DrivingFlags, 8.0f, 0, 500.0f);
-                            }
+                            Entity target = (lb != null && lb.Exists()) ? (Entity)lb : (Entity)playerVeh;
+                            Function.Call((Hash)0xFC545A9F0626E3B6, // TASK_VEHICLE_FOLLOW
+                                ped.Handle, bike.Handle, target.Handle,
+                                cfg.DriveSpeed, cfg.DrivingFlags, _followMinDistance);
                         }
                         Function.Call(Hash.SET_ENTITY_MAX_SPEED, bike.Handle, cfg.MaxSpeed);
                         return;
@@ -409,9 +491,10 @@ namespace StreetRiders
                 
                 if (leaderBike != null && leaderBike.Exists())
                 {
-                    Function.Call(Hash.TASK_VEHICLE_ESCORT,
+                    // Autonomous: followers also use TASK_VEHICLE_FOLLOW on leader
+                    Function.Call((Hash)0xFC545A9F0626E3B6, // TASK_VEHICLE_FOLLOW
                         ped.Handle, bike.Handle, leaderBike.Handle,
-                        -1, cfg.DriveSpeed, cfg.DrivingFlags, 10.0f, 0, 500.0f);
+                        cfg.DriveSpeed, cfg.DrivingFlags, _followMinDistance);
                 }
                 else
                 {
