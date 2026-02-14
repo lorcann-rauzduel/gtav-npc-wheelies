@@ -105,7 +105,7 @@ namespace StreetRiders
                                 CancelBodyguardAndFollow(group, playerVeh);
                             else if (group.FollowMode == GroupFollowMode.WaitingForPlayer
                                      && _dismountBehavior == DismountBehavior.Freestyle)
-                                group.FreestyleNextSwitch = 0; // force freestyle retask next tick
+                                group.FreestyleLastRefresh = 0; // force waypoint refresh next tick
 
                             if (_debug)
                                 Notification.PostTicker($"~g~Bodyguard: {group.ConfigName} threat neutralized, resuming", true);
@@ -228,12 +228,8 @@ namespace StreetRiders
 
                                 if (_dismountBehavior == DismountBehavior.Freestyle)
                                 {
-                                    // Freestyle: riders stay on bikes, ride loops near player
-                                    Vector3 dest;
-                                    float destH;
-                                    if (FindRoadNode(playerPos, 30f, 80f, out dest, out destH))
-                                        group.Destination = dest;
-                                    group.FreestyleNextSwitch = now + _rnd.Next(8000, 15000);
+                                    // Freestyle: riders stay on bikes, cruise back and forth near player
+                                    SetupFreestyleWaypoints(group, playerPos);
                                     RetaskFreestyleLoop(group);
                                     if (_debug)
                                         Notification.PostTicker($"~b~Follow: {group.ConfigName} freestyle near player!", true);
@@ -349,49 +345,45 @@ namespace StreetRiders
                     // =============================================================
                     if (_dismountBehavior == DismountBehavior.Freestyle)
                     {
-                        // Time to pick a new destination?
-                        if (now > group.FreestyleNextSwitch)
-                        {
-                            Vector3 newDest;
-                            float destH;
-                            if (FindRoadNode(playerPos, 30f, 80f, out newDest, out destH))
-                                group.Destination = newDest;
-                            group.FreestyleNextSwitch = now + _rnd.Next(8000, 15000);
-                            RetaskFreestyleLoop(group);
-                        }
+                        // Refresh waypoints every 20s or if player moved far from the route
+                        float playerToA = playerPos.DistanceTo(group.FreestylePointA);
+                        float playerToB = playerPos.DistanceTo(group.FreestylePointB);
+                        bool waypointsStale = (now - group.FreestyleLastRefresh) > 20000
+                                              || (playerToA > 80f && playerToB > 80f);
 
-                        // Check each rider: retask if stuck idle or drifted too far
+                        if (waypointsStale)
+                            SetupFreestyleWaypoints(group, playerPos);
+
+                        // Per-rider: check if reached current waypoint → flip direction
+                        bool pastGracePeriod = (now - group.FreestyleLastRetask) > 3000;
+
                         for (int r = 0; r < group.PedHandles.Count; r++)
                         {
                             Ped ped = (Ped)Entity.FromHandle(group.PedHandles[r]);
-                            if (ped == null || !ped.Exists() || !ped.IsAlive) continue;
+                            if (ped == null || !ped.Exists() || !ped.IsAlive || !ped.IsInVehicle()) continue;
 
-                            float dist = ped.Position.DistanceTo(playerPos);
+                            RiderState st;
+                            if (!_riders.TryGetValue(ped.Handle, out st)) continue;
 
-                            if (dist > _followLoseRadius * 0.8f)
+                            Vector3 target = st.FreestyleTowardB ? group.FreestylePointB : group.FreestylePointA;
+                            float distToTarget = ped.Position.DistanceTo(target);
+
+                            // Reached waypoint → flip to the other one
+                            if (distToTarget < 20f)
                             {
-                                // Too far — force refresh next tick
-                                group.FreestyleNextSwitch = 0;
+                                st.FreestyleTowardB = !st.FreestyleTowardB;
+                                Vector3 newTarget = st.FreestyleTowardB ? group.FreestylePointB : group.FreestylePointA;
+                                TaskRiderFreestyle(ped, newTarget, st);
+                                group.FreestyleLastRetask = now;
                             }
-                            else if (ped.IsInVehicle() && Function.Call<bool>(Hash.IS_PED_STILL, ped.Handle))
+                            // Stuck idle for 3s+ → retask toward current waypoint
+                            else if (pastGracePeriod && Function.Call<bool>(Hash.IS_PED_STILL, ped.Handle))
                             {
-                                // Rider is on bike but not moving — task died, retask immediately
-                                Vehicle bike = ped.CurrentVehicle;
-                                if (bike != null)
-                                {
-                                    RiderState st;
-                                    _riders.TryGetValue(ped.Handle, out st);
-                                    WheelieConfig cfg = GetWheelieConfig(st?.BikeModel ?? "");
+                                TaskRiderFreestyle(ped, target, st);
+                                group.FreestyleLastRetask = now;
 
-                                    Function.Call(Hash.CLEAR_PED_TASKS, ped.Handle);
-                                    Function.Call(Hash.TASK_VEHICLE_DRIVE_TO_COORD_LONGRANGE,
-                                        ped.Handle, bike.Handle,
-                                        group.Destination.X, group.Destination.Y, group.Destination.Z,
-                                        cfg.DriveSpeed * 0.7f, cfg.DrivingFlags, 15f);
-
-                                    if (_debug)
-                                        Notification.PostTicker($"~b~Freestyle: retasked idle rider", true);
-                                }
+                                if (_debug)
+                                    Notification.PostTicker($"~b~Freestyle: retasked idle rider", true);
                             }
                         }
                     }
@@ -572,9 +564,46 @@ namespace StreetRiders
         }
 
         /// <summary>
-        /// Freestyle mode: tasks riders to drive to group.Destination in a loop near the player.
+        /// Freestyle: finds two road waypoints near the player for back-and-forth cruising.
+        /// Point A = closest road node (~20-40m), Point B = further node (~60-100m).
+        /// </summary>
+        private void SetupFreestyleWaypoints(ActiveGroup group, Vector3 playerPos)
+        {
+            Vector3 nodeA, nodeB;
+            float headingA, headingB;
+
+            // Point A: close road node (~10-25m from player)
+            if (!FindRoadNode(playerPos, 10f, 25f, out nodeA, out headingA))
+                nodeA = playerPos;
+
+            // Point B: further road node (~40-65m from player)
+            if (!FindRoadNode(playerPos, 40f, 65f, out nodeB, out headingB))
+            {
+                // Fallback: offset from point A
+                nodeB = nodeA + new Vector3(50f, 0f, 0f);
+            }
+
+            // If both points ended up too close (<20m), push B further along A→B direction
+            if (nodeA.DistanceTo(nodeB) < 20f)
+            {
+                Vector3 dir = (nodeB - nodeA);
+                if (dir.Length() > 0.1f)
+                    nodeB = nodeA + Vector3.Normalize(dir) * 55f;
+                else
+                    nodeB = nodeA + new Vector3(55f, 0f, 0f);
+            }
+
+            group.FreestylePointA = nodeA;
+            group.FreestylePointB = nodeB;
+            group.FreestyleLastRefresh = Game.GameTime;
+
+            if (_debug)
+                Notification.PostTicker($"~b~Freestyle waypoints: A={nodeA.DistanceTo(playerPos):0}m  B={nodeB.DistanceTo(playerPos):0}m  span={nodeA.DistanceTo(nodeB):0}m", true);
+        }
+
+        /// <summary>
+        /// Freestyle: initial task — sends all riders toward point A (half) or B (half) for variety.
         /// Clears previous tasks first to ensure clean transition from escort/follow.
-        /// Wheelie logic in ProcessAllRiders handles tricks automatically.
         /// </summary>
         private void RetaskFreestyleLoop(ActiveGroup group)
         {
@@ -583,20 +612,34 @@ namespace StreetRiders
                 Ped ped = (Ped)Entity.FromHandle(group.PedHandles[i]);
                 if (ped == null || !ped.Exists() || !ped.IsAlive || !ped.IsInVehicle()) continue;
 
-                Vehicle bike = ped.CurrentVehicle;
                 RiderState st;
-                _riders.TryGetValue(ped.Handle, out st);
-                WheelieConfig cfg = GetWheelieConfig(st?.BikeModel ?? "");
+                if (!_riders.TryGetValue(ped.Handle, out st)) continue;
 
-                // Clear previous tasks (escort, follow, etc.) before assigning freestyle drive
-                Function.Call(Hash.CLEAR_PED_TASKS, ped.Handle);
+                // Alternate riders between A and B for natural spread
+                st.FreestyleTowardB = (i % 2 == 0);
+                Vector3 target = st.FreestyleTowardB ? group.FreestylePointB : group.FreestylePointA;
 
-                // Drive to the freestyle destination at moderate speed
-                Function.Call(Hash.TASK_VEHICLE_DRIVE_TO_COORD_LONGRANGE,
-                    ped.Handle, bike.Handle,
-                    group.Destination.X, group.Destination.Y, group.Destination.Z,
-                    cfg.DriveSpeed * 0.7f, cfg.DrivingFlags, 15f);
+                TaskRiderFreestyle(ped, target, st);
             }
+
+            group.FreestyleLastRetask = Game.GameTime;
+        }
+
+        /// <summary>
+        /// Tasks a single rider to drive to a freestyle waypoint at moderate speed.
+        /// </summary>
+        private void TaskRiderFreestyle(Ped ped, Vector3 target, RiderState st)
+        {
+            Vehicle bike = ped.CurrentVehicle;
+            if (bike == null) return;
+
+            WheelieConfig cfg = GetWheelieConfig(st?.BikeModel ?? "");
+
+            Function.Call(Hash.CLEAR_PED_TASKS, ped.Handle);
+            Function.Call(Hash.TASK_VEHICLE_DRIVE_TO_COORD_LONGRANGE,
+                ped.Handle, bike.Handle,
+                target.X, target.Y, target.Z,
+                cfg.DriveSpeed * 0.7f, cfg.DrivingFlags, 15f);
         }
 
         /// <summary>

@@ -29,7 +29,10 @@ namespace StreetRiders
             public int LastDecisionTime;      // GameTime of last follow mode transition (cooldown)
 
             // -- Freestyle state --
-            public int FreestyleNextSwitch;   // GameTime to pick a new destination
+            public Vector3 FreestylePointA;   // Close waypoint on nearby road
+            public Vector3 FreestylePointB;   // Further waypoint on nearby road
+            public int FreestyleLastRefresh;  // GameTime when waypoints were last updated
+            public int FreestyleLastRetask;   // GameTime of last retask (grace period for idle check)
         }
     }
 }
