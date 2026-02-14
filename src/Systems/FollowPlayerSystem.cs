@@ -360,16 +360,38 @@ namespace StreetRiders
                             RetaskFreestyleLoop(group);
                         }
 
-                        // If riders drifted too far from player, pull them back
+                        // Check each rider: retask if stuck idle or drifted too far
                         for (int r = 0; r < group.PedHandles.Count; r++)
                         {
                             Ped ped = (Ped)Entity.FromHandle(group.PedHandles[r]);
                             if (ped == null || !ped.Exists() || !ped.IsAlive) continue;
+
                             float dist = ped.Position.DistanceTo(playerPos);
+
                             if (dist > _followLoseRadius * 0.8f)
                             {
-                                // Too far — retask toward player area
-                                group.FreestyleNextSwitch = 0; // force refresh next tick
+                                // Too far — force refresh next tick
+                                group.FreestyleNextSwitch = 0;
+                            }
+                            else if (ped.IsInVehicle() && Function.Call<bool>(Hash.IS_PED_STILL, ped.Handle))
+                            {
+                                // Rider is on bike but not moving — task died, retask immediately
+                                Vehicle bike = ped.CurrentVehicle;
+                                if (bike != null)
+                                {
+                                    RiderState st;
+                                    _riders.TryGetValue(ped.Handle, out st);
+                                    WheelieConfig cfg = GetWheelieConfig(st?.BikeModel ?? "");
+
+                                    Function.Call(Hash.CLEAR_PED_TASKS, ped.Handle);
+                                    Function.Call(Hash.TASK_VEHICLE_DRIVE_TO_COORD_LONGRANGE,
+                                        ped.Handle, bike.Handle,
+                                        group.Destination.X, group.Destination.Y, group.Destination.Z,
+                                        cfg.DriveSpeed * 0.7f, cfg.DrivingFlags, 15f);
+
+                                    if (_debug)
+                                        Notification.PostTicker($"~b~Freestyle: retasked idle rider", true);
+                                }
                             }
                         }
                     }
@@ -551,6 +573,7 @@ namespace StreetRiders
 
         /// <summary>
         /// Freestyle mode: tasks riders to drive to group.Destination in a loop near the player.
+        /// Clears previous tasks first to ensure clean transition from escort/follow.
         /// Wheelie logic in ProcessAllRiders handles tricks automatically.
         /// </summary>
         private void RetaskFreestyleLoop(ActiveGroup group)
@@ -564,6 +587,9 @@ namespace StreetRiders
                 RiderState st;
                 _riders.TryGetValue(ped.Handle, out st);
                 WheelieConfig cfg = GetWheelieConfig(st?.BikeModel ?? "");
+
+                // Clear previous tasks (escort, follow, etc.) before assigning freestyle drive
+                Function.Call(Hash.CLEAR_PED_TASKS, ped.Handle);
 
                 // Drive to the freestyle destination at moderate speed
                 Function.Call(Hash.TASK_VEHICLE_DRIVE_TO_COORD_LONGRANGE,
