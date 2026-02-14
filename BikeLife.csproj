@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <OutputType>Library</OutputType>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>StreetRiders</AssemblyName>
+    <RootNamespace>StreetRiders</RootNamespace>
+    <Version>1.1.0</Version>
+    
+    <OutputPath>D:\SteamLibrary\steamapps\common\Grand Theft Auto V\scripts\</OutputPath>
+    
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="ScriptHookVDotNet3">
+      <HintPath>D:\SteamLibrary\steamapps\common\Grand Theft Auto V\ScriptHookVDotNet3.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="ScriptHookV">
+      <HintPath>D:\SteamLibrary\steamapps\common\Grand Theft Auto V\ScriptHookV.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Drawing" />
+  </ItemGroup>
+
+</Project>
