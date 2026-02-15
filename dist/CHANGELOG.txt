@@ -6,7 +6,6 @@ All notable changes to Street Riders are documented here.
 
 Added
 
-* Immersive Idling: Riders now dynamically track the player with their head (LookAt) and turn their body (TurnTo) if the player moves around them while stopped.
 * Ambient Speech: Riders now occasionally speak or greet the player ("Chat State") while idling in the "Wait" mode.
 
 Improved
