@@ -136,32 +136,36 @@ namespace StreetRiders
                 if (leaderBike != null && leaderBike.Exists())
                     leaderPed = leaderBike.Driver;
 
-                    // --- AJOUTER ICI : Détection Leader Stuck ---
                 // --- DÉTECTION LEADER STUCK (Vitesse < 1.5 m/s) ---
-                if (leaderPed != null && leaderPed.Exists() && leaderPed.IsAlive && leaderPed.IsInVehicle())
+                // SKIP cette détection si le groupe suit le joueur (le leader s'arrête naturellement)
+                if (group.FollowMode != GroupFollowMode.FollowingPlayer 
+                    && leaderPed != null && leaderPed.Exists() && leaderPed.IsAlive && leaderPed.IsInVehicle())
                 {
                     Vehicle lv = leaderPed.CurrentVehicle;
-                    // Si le véhicule roule à moins de 5 km/h (environ 1.5 m/s)
-                    // ET qu'on n'est PAS en train d'attendre le joueur à l'arrêt
-                    if (lv.Speed < 1.5f && group.FollowMode != GroupFollowMode.WaitingForPlayer)
+                    
+                    // IGNORE SI C'EST LE JOUEUR
+                    if (leaderPed.Handle == Game.Player.Character.Handle)
                     {
-                        if (group.LeaderStuckStartTime == 0) group.LeaderStuckStartTime = now;
+                        group.LeaderStuckStartTime = 0;
+                    }
+                    else if (lv.Speed < 1.5f && group.FollowMode != GroupFollowMode.WaitingForPlayer)
+                    {
+                        if (group.LeaderStuckStartTime == 0) 
+                            group.LeaderStuckStartTime = now;
                         
-                        // Si bloqué depuis plus de 8 secondes (8000ms)
                         if (now - group.LeaderStuckStartTime > 8000)
                         {
                             PromoteNewLeader(group);
                             group.LeaderStuckStartTime = 0;
                             if (_debug) Notification.PostTicker("~o~Follow: Leader stuck (speed 0), promoting new one", true);
                             
-                            // Force le retask immédiat
                             RetaskEntireGroup(group);
                             continue;
                         }
                     }
                     else
                     {
-                        group.LeaderStuckStartTime = 0; // Il roule, on reset
+                        group.LeaderStuckStartTime = 0;
                     }
                 }
 
@@ -301,7 +305,7 @@ namespace StreetRiders
 
                     // =========================================================================
                     // LOGIQUE DE RATTRAPAGE / ANTI-ÉPARPILLEMENT
-                    // Vérifie toutes les 1s si un motard est trop loin (> 60m)
+                    // Vérifie toutes les 1s si un motard est trop loin (> 60m) et qu'il ne suit pas le joueur
                     // =========================================================================
                     if (now % 1000 < 50) // Check toutes les secondes environ
                     {
@@ -322,24 +326,24 @@ namespace StreetRiders
                                 // CAS 1 : Il est loin (> 60m) -> On force le rattrapage (CATCH UP)
                                 if (distToLeader > 60.0f)
                                 {
+                                    // SKIP SI C'EST LE JOUEUR
+                                    if (rp.Handle == Game.Player.Character.Handle)
+                                        continue;
+                                    
                                     RiderState st;
                                     _riders.TryGetValue(rp.Handle, out st);
                                     WheelieConfig cfg = GetWheelieConfig(st?.BikeModel ?? "");
-                                    // On lui donne l'ordre de rouler VERS le leader (pas le suivre, le rejoindre)
-                                    // Avec des flags agressifs pour ignorer le trafic et rattraper vite
-                                    // On utilise la native que tu as citée pour foncer vers la position du leader
+                                    
                                     Function.Call(Hash.TASK_VEHICLE_DRIVE_TO_COORD, 
                                         rp.Handle, 
                                         rp.CurrentVehicle.Handle, 
                                         leaderPos.X, leaderPos.Y, leaderPos.Z, 
-                                        cfg.DriveSpeed * 1.2f, // Il fonce un peu plus vite pour rattraper
+                                        cfg.DriveSpeed * 1.2f,
                                         1.0f, 
                                         rp.CurrentVehicle.Model.Hash, 
-                                        1074528293, // DrivingMode agressif pour doubler le trafic
-                                        5.0f,       // stopRange
+                                        1074528293,
+                                        5.0f,
                                         true);
-                                    
-                                    if (_debug) Notification.PostTicker($"~y~Rider catching up ({distToLeader:0}m)", true);
                                 }
                                 // CAS 2 : Il est revenu (< 50m) mais n'a pas la tâche Follow -> On remet en formation
                                 else if (distToLeader < 50.0f)
@@ -570,7 +574,7 @@ namespace StreetRiders
                                     // Only retask if: first assignment OR (1s+ elapsed AND task 178 died)
                                     if (needsFirst || (refreshTime && !Function.Call<bool>(Hash.GET_IS_TASK_ACTIVE, ped.Handle, 178)))
                                     {
-                                        float speed = distToPlayer > _idleFollowDist ? 2.0f : 1.0f;
+                                        float speed = distToPlayer > _idleFollowDist ? 1.5f : 1.0f;
                                         Function.Call(Hash.TASK_GO_TO_ENTITY,
                                             ped.Handle, playerHandle, -1,
                                             _idleMinStayDist, speed, 1073741824.0f, 0);
@@ -586,27 +590,91 @@ namespace StreetRiders
 
                                     bool riderStill = Function.Call<bool>(Hash.IS_PED_STILL, ped.Handle);
 
-                                    if (!riderStill)
-                                    {
-                                        // Rider is still moving -> reset timer, don't start scenario
-                                        if (st != null) st.IdleArrivalTime = 0;
-                                    }
-                                    else
-                                    {
+                                   
+                                        // Rider is truly idle -> start/continue arrival timer
                                         // Rider is truly idle -> start/continue arrival timer
                                         if (st != null && st.IdleArrivalTime == 0)
                                             st.IdleArrivalTime = now;
 
-                                        bool arrivedLongEnough = st != null && st.IdleArrivalTime > 0
-                                                                 && (now - st.IdleArrivalTime) > _idleScenarioWaitMs;
+                                        // --- AJOUT MAJEUR : HEAD TRACKING & RE-ORIENTATION DYNAMIQUE ---
 
-                                        if (arrivedLongEnough && _idleScenarios.Count > 0)
+                                        // 1. On force le PNJ à regarder le joueur (la tête seulement) en permanence
+                                        Function.Call(Hash.TASK_LOOK_AT_ENTITY, ped.Handle, playerHandle, -1, 0, 3);
+
+                                        // ==================================================================================
+                                        // AJOUT : SYSTÈME DE DIALOGUE AMBIANT
+                                        // ==================================================================================
+                                        // On vérifie si ça fait un moment qu'il n'a pas parlé (entre 8s et 15s)
+                                        // "LastTalkTime" doit être ajouté dans ta classe RiderState, sinon utilise une variable locale temporaire
+                                        if (st != null && (now - st.LastTalkTime) > _rnd.Next(8000, 15000))
                                         {
-                                            string scenario = _idleScenarios[_rnd.Next(_idleScenarios.Count)];
-                                            Function.Call(Hash.TASK_START_SCENARIO_IN_PLACE, ped.Handle, scenario, 0, true);
-                                            if (st != null) st.ScenarioPlaying = true;
+                                            // On ne veut pas qu'il parle à chaque frame, donc on lance un dé (30% de chance quand le timer est bon)
+                                            if (_rnd.Next(100) < 100)
+                                            {
+                                                // Liste des phrases possibles pour varier
+                                                string[] speeches = { "CHAT_STATE", "CHAT_RESP", "SEE_FRANKLIN", "GENERIC_CHEER", "HURRY_UP" };
+                                                string chosenSpeech = speeches[_rnd.Next(speeches.Length)];
+
+                                                // Le paramètre "SPEECH_PARAMS_FORCE_NORMAL" assure qu'il parle même s'il fait autre chose
+                                                Function.Call(Hash.PLAY_PED_AMBIENT_SPEECH_NATIVE, ped.Handle, chosenSpeech, "SPEECH_PARAMS_FORCE_NORMAL");
+                                                                                            }
+
+                                            // On reset le timer pour qu'il attende avant la prochaine phrase
+                                            st.LastTalkTime = now;
                                         }
-                                    }
+                                        // ==================================================================================
+
+                                        // 2. Calcul de l'angle pour savoir si le joueur a "trop bougé"
+                                        // On récupère la position relative du joueur par rapport au PNJ
+                                        Vector3 pidPos = ped.Position;
+                                        float dx = playerPos.X - pidPos.X;
+                                        float dy = playerPos.Y - pidPos.Y;
+                                        // Calcul de l'angle vers lequel le PNJ devrait regarder (en degrés)
+                                        float headingToPlayer = (float)(System.Math.Atan2(dy, dx) * 180.0 / System.Math.PI) - 90.0f;
+                                        float currentHeading = ped.Heading;
+                                        // Différence absolue entre l'angle actuel et l'angle cible
+                                        float headingDiff = System.Math.Abs((currentHeading - headingToPlayer + 540) % 360 - 180);
+
+                                        // Si l'angle est trop grand (> 45 degrés), il doit se tourner physiquement
+                                        bool needToTurn = headingDiff > 45.0f;
+
+                                        if (needToTurn)
+                                        {
+                                            // Si on joue déjà un scénario, on l'arrête proprement pour se tourner
+                                            if (st != null && st.ScenarioPlaying)
+                                            {
+                                                Function.Call(Hash.CLEAR_PED_TASKS, ped.Handle); // Arrête le scénario
+                                                st.ScenarioPlaying = false;
+                                                st.IdleArrivalTime = now; // Reset du timer pour attendre un peu avant de reprendre
+                                            }
+
+                                            // On lance la rotation du corps
+                                            // On ne le fait que si ce n'est pas déjà la tâche active (pour éviter le spam)
+                                            if (!Function.Call<bool>(Hash.GET_IS_TASK_ACTIVE, ped.Handle, 225)) // 225 = CTaskComplexTurnToFaceEntityOrCoord
+                                            {
+                                                Function.Call(Hash.TASK_TURN_PED_TO_FACE_ENTITY, ped.Handle, playerHandle, 2000);
+                                                if (st != null) st.IdleArrivalTime = now; // On repousse le scénario tant qu'il tourne
+                                            }
+                                        }
+                                        else
+                                        {
+                                            // L'angle est bon (il te fait face), on peut dérouler la logique du scénario
+
+                                            bool arrivedLongEnough = st != null && st.IdleArrivalTime > 0
+                                                                    && (now - st.IdleArrivalTime) > _idleScenarioWaitMs;
+
+                                            if (_idleScenarios.Count > 0)
+                                            {
+                                                // Si le timer est bon ET qu'il ne joue pas déjà
+                                                if (arrivedLongEnough && st != null && !st.ScenarioPlaying)
+                                                {
+                                                    string scenario = _idleScenarios[_rnd.Next(_idleScenarios.Count)];
+                                                    Function.Call(Hash.TASK_START_SCENARIO_IN_PLACE, ped.Handle, scenario, 0, true);
+                                                    st.ScenarioPlaying = true;
+                                                }
+                                            }
+                                        }
+                                
                                 }
                             }
                         }

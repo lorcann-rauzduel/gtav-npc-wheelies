@@ -29,6 +29,11 @@ namespace StreetRiders
             public int IdleArrivalTime;       // GameTime when rider arrived near player on foot
             public uint OriginalRelGroup;     // Original relationship group hash saved at spawn
             public bool FreestyleTowardB;    // Freestyle: true = heading to point B, false = heading to A
+
+            public bool TurningToPlayer;
+            public int TurnStartTime;
+
+            public int LastTalkTime;
         }
     }
 }
