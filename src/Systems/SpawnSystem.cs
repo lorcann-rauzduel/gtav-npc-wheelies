@@ -63,10 +63,24 @@ namespace StreetRiders
                 return;
             }
 
+            // Pick destination based on CruiseMode
+            bool isTerritory = ResolveCruiseMode(groupCfg);
             Vector3 destination;
             float destHeading;
-            if (!FindRoadNode(spawnPos, _destDistMin, _destDistMax, out destination, out destHeading))
-                destination = spawnPos + GetHeadingDir(spawnHeading) * 500f;
+
+            if (isTerritory)
+            {
+                // Territory: stay near spawn area, verify zone
+                float radius = groupCfg.TerritoryRadius > 0 ? groupCfg.TerritoryRadius : 150f;
+                if (!FindRoadNodeInZone(spawnPos, radius * 0.3f, radius, groupCfg.Zones, out destination, out destHeading))
+                    destination = spawnPos + GetHeadingDir(spawnHeading) * radius * 0.5f;
+            }
+            else
+            {
+                // GoAway: drive far from spawn
+                if (!FindRoadNode(spawnPos, _destDistMin, _destDistMax, out destination, out destHeading))
+                    destination = spawnPos + GetHeadingDir(spawnHeading) * 500f;
+            }
 
             int count = _rnd.Next(_ridersMin, _ridersMax + 1);
 
@@ -149,7 +163,10 @@ namespace StreetRiders
             {
                 Id = _nextGroupId++,
                 Destination = destination,
-                ConfigName = groupCfg.Name
+                SpawnOrigin = spawnPos,
+                IsTerritory = isTerritory,
+                ConfigName = groupCfg.Name,
+                Zones = groupCfg.Zones
             };
 
             Vector3 forwardDir = GetHeadingDir(spawnHeading);
@@ -256,6 +273,10 @@ namespace StreetRiders
         /// </summary>
         private void CleanAllRiders()
         {
+            // Remove all blips before deleting
+            foreach (var kv in _riders)
+                RemoveRiderBlip(kv.Value);
+
             int pedCount = 0;
             foreach (var group in _activeGroups)
             {
@@ -336,10 +357,22 @@ namespace StreetRiders
                 return;
             }
 
+            // Pick destination based on CruiseMode
+            bool isTerritory = ResolveCruiseMode(groupCfg);
             Vector3 destination;
             float destHeading;
-            if (!FindRoadNode(spawnPos, _destDistMin, _destDistMax, out destination, out destHeading))
-                destination = spawnPos + GetHeadingDir(spawnHeading) * 500f;
+
+            if (isTerritory)
+            {
+                float radius = groupCfg.TerritoryRadius > 0 ? groupCfg.TerritoryRadius : 150f;
+                if (!FindRoadNodeInZone(spawnPos, radius * 0.3f, radius, groupCfg.Zones, out destination, out destHeading))
+                    destination = spawnPos + GetHeadingDir(spawnHeading) * radius * 0.5f;
+            }
+            else
+            {
+                if (!FindRoadNode(spawnPos, _destDistMin, _destDistMax, out destination, out destHeading))
+                    destination = spawnPos + GetHeadingDir(spawnHeading) * 500f;
+            }
 
             int count = _rnd.Next(_ridersMin, _ridersMax + 1);
 
@@ -394,7 +427,7 @@ namespace StreetRiders
 
             string displayBikes = mixed ? string.Join("/", bikeNames) : bikeNames[0];
             if (_debug)
-                Notification.PostTicker($"~y~Riders: Loading {count}x ~w~{displayBikes}~y~...", true);
+                Notification.PostTicker($"~y~Riders: Loading {count}x ~w~{displayBikes}~y~ ({(isTerritory ? "Territory" : "GoAway")})...", true);
 
             // Load ped models in parallel
             var pedEntries = new List<Model>();
@@ -421,7 +454,10 @@ namespace StreetRiders
             {
                 Id = _nextGroupId++,
                 Destination = destination,
-                ConfigName = groupCfg.Name
+                SpawnOrigin = spawnPos,
+                IsTerritory = isTerritory,
+                ConfigName = groupCfg.Name,
+                Zones = groupCfg.Zones
             };
 
             Vector3 forwardDir = GetHeadingDir(spawnHeading);
@@ -550,9 +586,18 @@ namespace StreetRiders
             
             // Combat attributes (17 = can't fight back when attacked)
             Function.Call(Hash.SET_PED_COMBAT_ATTRIBUTES, ped.Handle, cfg.CombatAttribute, cfg.CombatAttributeValue);
-                        
-            if (cfg.SuffersCriticalHits >= 0)
-                Function.Call(Hash.SET_PED_SUFFERS_CRITICAL_HITS, ped.Handle, cfg.SuffersCriticalHits > 0);
+        }
+
+        /// <summary>
+        /// Resolves the CruiseMode for a group. Returns true if Territory, false if GoAway.
+        /// For Mixed mode, rolls a random chance based on TerritoryChance.
+        /// </summary>
+        private bool ResolveCruiseMode(GroupConfig cfg)
+        {
+            if (cfg.CruiseMode == CruiseMode.Territory) return true;
+            if (cfg.CruiseMode == CruiseMode.GoAway) return false;
+            // Mixed: roll percentage
+            return _rnd.Next(100) < cfg.TerritoryChance;
         }
 
         private GroupConfig PickWeightedGroup(List<GroupConfig> candidates)
@@ -601,6 +646,47 @@ namespace StreetRiders
                 }
             }
             return false;
+        }
+
+        /// <summary>
+        /// Finds a road node within range that is also inside one of the allowed zones.
+        /// If zones is empty, behaves like normal FindRoadNode (no zone check).
+        /// Tries up to 5 candidates; falls back to last found if none match.
+        /// </summary>
+        private bool FindRoadNodeInZone(Vector3 origin, float minDist, float maxDist,
+            List<string> zones, out Vector3 position, out float heading)
+        {
+            if (zones == null || zones.Count == 0)
+                return FindRoadNode(origin, minDist, maxDist, out position, out heading);
+
+            Vector3 lastPos = Vector3.Zero;
+            float lastHead = 0f;
+            bool anyFound = false;
+
+            for (int attempt = 0; attempt < 5; attempt++)
+            {
+                Vector3 candidatePos;
+                float candidateHead;
+                if (FindRoadNode(origin, minDist, maxDist, out candidatePos, out candidateHead))
+                {
+                    anyFound = true;
+                    lastPos = candidatePos;
+                    lastHead = candidateHead;
+
+                    string destZone = GetZoneName(candidatePos).ToUpperInvariant();
+                    if (zones.Contains(destZone))
+                    {
+                        position = candidatePos;
+                        heading = candidateHead;
+                        return true;
+                    }
+                }
+            }
+
+            // Fallback: return last found node even if zone doesn't match
+            position = lastPos;
+            heading = lastHead;
+            return anyFound;
         }
 
         // =========================================================================

@@ -28,6 +28,7 @@ namespace StreetRiders
                     // Rider dead/gone: release any cops that were pursuing them
                     if (ped != null && ped.Exists())
                         ReleasePursuingCops(ped.Position);
+                    RemoveRiderBlip(_riders[handle]);
                     _riders.Remove(handle);
                     continue;
                 }
@@ -37,6 +38,16 @@ namespace StreetRiders
                 RiderState state = _riders[handle];
                 WheelieConfig cfg = GetWheelieConfig(state.BikeModel);
 
+                // Blip management: independent of Debug flag
+                if (_debugShowBlips)
+                {
+                    if (state.BlipHandle == 0)
+                        AddRiderBlip(ped, state);
+                }
+                else if (state.BlipHandle != 0)
+                {
+                    RemoveRiderBlip(state);
+                }
 
                 // Skip riders in idle scenarios (waiting for player)
                 if (state.InIdleScenario) continue;
@@ -55,8 +66,8 @@ namespace StreetRiders
                 Vehicle bike = ped.CurrentVehicle;
                 if (bike == null || !bike.Model.IsBike) continue;
                 state.LastBikeHandle = bike.Handle;
-                // Bike destroyed or submerged: eject ped, make them wander, release naturally
-                if (bike.IsDead || bike.EngineHealth <= 0 || bike.IsInWater)
+                // Bike truly destroyed or submerged: eject ped and release (EngineHealth 0 is just damaged, not destroyed)
+                if (bike.IsDead || bike.IsInWater)
                 {
                     ReleasePursuingCops(ped.Position);
                     ped.Task.LeaveVehicle();
@@ -65,17 +76,28 @@ namespace StreetRiders
                     Function.Call(Hash.SET_BLOCKING_OF_NON_TEMPORARY_EVENTS, ped.Handle, false);
                     ped.MarkAsNoLongerNeeded();
                     bike.MarkAsNoLongerNeeded();
+                    RemoveRiderBlip(state);
                     _riders.Remove(handle);
                     if (_debug)
                         Notification.PostTicker($"~o~Riders: ped released (bike {(bike.IsInWater ? "in water" : "destroyed")})", true);
                     continue;
                 }
 
+                // Idle-on-bike detection: retask if stuck for >5s
+                if (bike.Speed > 2.0f)
+                    state.LastMovingTime = now;
+                else if (state.LastMovingTime > 0 && now - state.LastMovingTime > 5000 && state.IsSpawned)
+                {
+                    RetaskRiderToGroup(ped, state);
+                    state.LastMovingTime = now;
+                    if (_debug)
+                        Notification.PostTicker("~o~Rider retasked (idle on bike >5s)", true);
+                }
+
                 // Skip wheelie if disabled for this group
                 if (!state.DoWheelie)
                 {
-                    if (_debug)
-                        DrawDebugText(ped, $"[{(state.IsSpawned?"S":"N")}:{state.BikeModel}] Cruising", Color.SkyBlue);
+                    DrawDebugText(ped, $"[{(state.IsSpawned?"S":"N")}:{state.BikeModel}] Cruising", Color.SkyBlue);
                     continue;
                 }
 
@@ -86,8 +108,7 @@ namespace StreetRiders
                     // Reset state so they don't start mid-wheelie when player approaches
                     if (state.Phase != Phase.Idle)
                         state.Phase = Phase.Idle;
-                    if (_debug)
-                        DrawDebugText(ped, $"[{(state.IsSpawned?"S":"N")}:{state.BikeModel}] Far ({distToPlayer:F0}m)", Color.Gray);
+                    DrawDebugText(ped, $"[{(state.IsSpawned?"S":"N")}:{state.BikeModel}] Far ({distToPlayer:F0}m)", Color.Gray);
                     continue;
                 }
 
@@ -132,8 +153,8 @@ namespace StreetRiders
                             TargetRiderHandle = ped.Handle,
                             AssignedTime = now
                         };
-
-                        if (cop.IsInVehicle())
+                    
+                        if (cop.IsInVehicle() && ped.IsInVehicle())
                         {
                             Vehicle copCar = cop.CurrentVehicle;
                             if (copCar != null && copCar.Driver == cop)
@@ -149,8 +170,7 @@ namespace StreetRiders
                         {
                             Function.Call(Hash.TASK_ARREST_PED, cop.Handle, ped.Handle);
 
-                            if (_debug)
-                                DrawDebugText(cop, "POLICE: ARRESTING RIDER", Color.Red);
+                            DrawDebugText(cop, "POLICE: ARRESTING RIDER", Color.Red);
                         }
                     }
                 }
@@ -163,7 +183,7 @@ namespace StreetRiders
                 
                 // >>> All wheelie logic (raycast, pitch, force) is in Physics/WheeliePhysics.cs <<<
                 TickWheelie(bike, state, speed, pitch, cfg);
-
+                /*
                 // ==================================================================================
                 // LOGIQUE CONTINUE PENDANT LE WHEELIE
                 // On met à jour la cible régulièrement pour que le NPC ne s'arrête jamais
@@ -216,27 +236,29 @@ namespace StreetRiders
                 else if (oldPhase != Phase.Idle && state.Phase == Phase.Idle)
                 {
                     RetaskRiderToGroup(ped, state);
-                }
+                }*/
 
                 state.LastPitch = pitch;
                 state.LastSpeed = speed;
 
-                if (_debug)
+                // Overhead HUD: independent of Debug flag
+                if (_debugShowOverhead)
                 {
                     string tag = state.IsSpawned ? "S" : "N";
                     float absPitch = Math.Abs(pitch);
 
                     Color col;
                     string detail;
-                    if (state.LastForceApplied > 0.001f)
+                    // Prioritize brake reason when set (contains pitch info)
+                    if (!string.IsNullOrEmpty(_wheelieSkipReason) && _wheelieSkipReason.StartsWith("BRAKE"))
+                    {
+                        col = Color.Red;
+                        detail = _wheelieSkipReason;
+                    }
+                    else if (state.LastForceApplied > 0.001f)
                     {
                         col = Color.Lime;
                         detail = $"LIFT:{state.LastForceApplied:F2}";
-                    }
-                    else if (state.LastForceApplied < -0.001f)
-                    {
-                        col = Color.Red;
-                        detail = $"DOWN:{state.LastForceApplied:F2}";
                     }
                     else if (!string.IsNullOrEmpty(_wheelieSkipReason))
                     {
@@ -276,10 +298,12 @@ namespace StreetRiders
         /// </summary>
         private void HandleRemount(Ped ped, RiderState state, WheelieConfig cfg)
         {
-            // 1. Safety: Dead - abort remount
+            // 1. Safety: Dead - abort remount, remove blip and stop tracking
             if (!ped.IsAlive)
             {
                 state.RemountActive = false;
+                RemoveRiderBlip(state);
+                _riders.Remove(ped.Handle);
                 return;
             }
 
@@ -289,31 +313,101 @@ namespace StreetRiders
 
             Vehicle bike = (Vehicle)Entity.FromHandle(state.LastBikeHandle);
 
-            // 2. Bike validity checks
+            // 2. Bike validity checks (IsDead = exploded/destroyed, EngineHealth can be 0 and still rideable)
             if (bike == null || !bike.Exists() || Game.GameTime > state.RemountTimeout
-                || bike.IsDead || bike.EngineHealth <= 0 || bike.IsInWater)
+                || bike.IsDead || bike.IsInWater)
             {
                 state.RemountActive = false;
                 ped.Task.Wander();
                 Function.Call(Hash.SET_BLOCKING_OF_NON_TEMPORARY_EVENTS, ped.Handle, false);
+                RemoveRiderBlip(state);
+                ped.MarkAsNoLongerNeeded();
+                _riders.Remove(ped.Handle);
                 return;
             }
 
             int now = Game.GameTime;
             float dist = ped.Position.DistanceTo(bike.Position);
 
-            // 2b. Force-warp: if rider hasn't remounted after RemountForceTimeout, warp onto bike
-            if (cfg.RemountForceTimeout > 0 && (!ped.IsWalking || !ped.IsRunning))
+            // 3. If TASK_ENTER_VEHICLE (160) is active, let it play out
+            bool enterTaskActive = Function.Call<bool>(Hash.GET_IS_TASK_ACTIVE, ped.Handle, 160);
+            if (enterTaskActive) return;
+
+            // 4. If TASK_GO_TO_ENTITY (178) is active and ped is within range, let it play out
+            bool goToTaskActive = Function.Call<bool>(Hash.GET_IS_TASK_ACTIVE, ped.Handle, 178);
+            if (goToTaskActive && dist < cfg.RemountMaxDistance) return;
+
+            bool hasNoTask = !enterTaskActive && !goToTaskActive;
+
+            // 5. Priority: close to bike + no task → enter immediately (no cooldown)
+            //    This covers the critical GO_TO → ENTER transition gap
+            if (hasNoTask && dist < cfg.RemountEnterDistance)
+            {
+                Function.Call(Hash.CLEAR_PED_TASKS, ped.Handle);
+                Function.Call(Hash.TASK_ENTER_VEHICLE,
+                    ped.Handle, bike.Handle, -1, -1, 2.0f, 1, 0);
+                state.RemountLastTaskTime = now;
+
+                if (_debug)
+                    Notification.PostTicker($"~y~Remount: ENTER_VEHICLE (dist:{dist:F1}m)", true);
+                return;
+            }
+
+            // 6. Not close enough: need to walk/run to bike — respect cooldown
+            bool pedIsStill = Function.Call<bool>(Hash.IS_PED_STILL, ped.Handle);
+            int effectiveCooldown = (pedIsStill && hasNoTask) ? 1000 : cfg.RemountTaskCooldown;
+            bool isFirstTask = state.RemountLastTaskTime == 0;
+            bool cooldownElapsed = (now - state.RemountLastTaskTime) >= effectiveCooldown;
+
+            if (!isFirstTask && !cooldownElapsed) return;
+
+            if (pedIsStill && hasNoTask)
+                Function.Call(Hash.CLEAR_PED_TASKS, ped.Handle);
+
+            if (dist < cfg.RemountMaxDistance)
+            {
+                float moveSpeed = pedIsStill ? 2.0f : cfg.RemountMoveSpeed;
+                Function.Call(Hash.TASK_GO_TO_ENTITY,
+                    ped.Handle, bike.Handle, -1,
+                    cfg.RemountEnterDistance - 1.0f,
+                    moveSpeed, 1073741824.0f, 0);
+                state.RemountLastTaskTime = now;
+
+                if (_debug)
+                    Notification.PostTicker($"~y~Remount: GO_TO (dist:{dist:F1}m{(pedIsStill ? " UNSTUCK" : "")})", true);
+            }
+            else
+            {
+                state.RemountActive = false;
+                ped.Task.Wander();
+                Function.Call(Hash.SET_BLOCKING_OF_NON_TEMPORARY_EVENTS, ped.Handle, false);
+                RemoveRiderBlip(state);
+                ped.MarkAsNoLongerNeeded();
+                _riders.Remove(ped.Handle);
+
+                if (_debug)
+                    Notification.PostTicker($"~r~Remount: ABANDONED (dist:{dist:F1}m)", true);
+                return;
+            }
+
+            // 7. Last resort: force-warp only if ped is truly stuck AND timeout exceeded
+            //    This should rarely happen now that stuck detection is more aggressive
+            if (cfg.RemountForceTimeout > 0)
             {
                 int fallTime = state.RemountTimeout - cfg.RemountTimeout;
-                // Si le temps limite est dépassé
                 if (now > fallTime + cfg.RemountForceTimeout)
                 {
-                    // --- MODIFICATION ICI : DÉBLOCAGE COMPLET ---
-                    Function.Call(Hash.CLEAR_PED_TASKS, ped.Handle); // Reset total
+                    float heading = bike.Heading;
+                    Function.Call(Hash.SET_ENTITY_ROTATION, bike.Handle, 0f, 0f, heading, 2, true);
+                    Function.Call(Hash.SET_VEHICLE_ON_GROUND_PROPERLY, bike.Handle, 5.0f);
+
+                    Function.Call(Hash.CLEAR_PED_TASKS, ped.Handle);
                     Function.Call(Hash.SET_PED_INTO_VEHICLE, ped.Handle, bike.Handle, -1);
                     Function.Call(Hash.SET_VEHICLE_HANDBRAKE, bike.Handle, false);
-                    Function.Call(Hash.SET_VEHICLE_ENGINE_ON, bike.Handle, true, true, false); // On force le moteur
+                    Function.Call(Hash.SET_VEHICLE_ENGINE_ON, bike.Handle, true, true, false);
+
+                    if (bike.EngineHealth < 100f)
+                        bike.EngineHealth = 300f;
 
                     state.RemountActive = false;
                     state.RemountLastTaskTime = 0;
@@ -325,69 +419,13 @@ namespace StreetRiders
                     if (state.IsSpawned)
                     {
                         RetaskRiderToGroup(ped, state);
-                        
-                        // "Kickstart" l'IA : on lui dit d'accélérer (Action 1) pendant 1 seconde
-                        // pour être sûr qu'il ne reste pas planté là.
                         Function.Call(Hash.TASK_VEHICLE_TEMP_ACTION, ped.Handle, bike.Handle, 1, 1000);
                     }
-                    // --------------------------------------------
 
                     if (_debug)
-                        Notification.PostTicker($"~o~Remount: FORCE WARP & KICKSTART (timeout {cfg.RemountForceTimeout}ms)", true);
+                        Notification.PostTicker($"~o~Remount: FORCE WARP (last resort)", true);
                     return;
                 }
-            }
-
-            // 3. CRITICAL: If TASK_ENTER_VEHICLE (160) is active, let it play out.
-            bool enterTaskActive = Function.Call<bool>(Hash.GET_IS_TASK_ACTIVE, ped.Handle, 160);
-            if (enterTaskActive) return;
-
-            // 4. Also check TASK_GO_TO_ENTITY (178) — ped is walking to bike
-            bool goToTaskActive = Function.Call<bool>(Hash.GET_IS_TASK_ACTIVE, ped.Handle, 178);
-            if (goToTaskActive)
-            {
-                if (dist < cfg.RemountMaxDistance) return; // still walking, let it be
-            }
-
-            // 5. If we reach here, ped has NO active remount task — assign one
-            bool isFirstTask = state.RemountLastTaskTime == 0;
-            bool cooldownElapsed = (now - state.RemountLastTaskTime) >= cfg.RemountTaskCooldown;
-
-            if (!isFirstTask && !cooldownElapsed) return;
-
-            if (dist < cfg.RemountEnterDistance)
-            {
-                // Close enough: Enter vehicle directly
-                Function.Call(Hash.TASK_ENTER_VEHICLE,
-                    ped.Handle, bike.Handle, -1, -1, cfg.RemountMoveSpeed, 1, 0);
-
-                state.RemountLastTaskTime = now;
-
-                if (_debug)
-                    Notification.PostTicker($"~y~Remount: ENTER_VEHICLE (dist:{dist:F1}m)", true);
-            }
-            else if (dist < cfg.RemountMaxDistance)
-            {
-                // Too far: Go to bike first
-                Function.Call(Hash.TASK_GO_TO_ENTITY,
-                    ped.Handle, bike.Handle, -1,
-                    cfg.RemountEnterDistance - 1.0f,
-                    cfg.RemountMoveSpeed, 1073741824.0f, 0);
-
-                state.RemountLastTaskTime = now;
-
-                if (_debug)
-                    Notification.PostTicker($"~y~Remount: GO_TO_ENTITY (dist:{dist:F1}m)", true);
-            }
-            else
-            {
-                // Give up: Bike too far away
-                state.RemountActive = false;
-                ped.Task.Wander();
-                Function.Call(Hash.SET_BLOCKING_OF_NON_TEMPORARY_EVENTS, ped.Handle, false);
-
-                if (_debug)
-                    Notification.PostTicker($"~r~Remount: ABANDONED (dist:{dist:F1}m)", true);
             }
         }
 

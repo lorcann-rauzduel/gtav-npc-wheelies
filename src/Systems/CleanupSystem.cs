@@ -55,7 +55,7 @@ namespace StreetRiders
                     else if (ped.IsInVehicle())
                     {
                         Vehicle v = ped.CurrentVehicle;
-                        if (v != null && (v.IsDead || v.EngineHealth <= 0 || v.IsInWater))
+                        if (v != null && (v.IsDead || v.IsInWater))
                         {
                             // Bike destroyed or in water: release naturally
                             ReleasePursuingCops(ped.Position);
@@ -72,6 +72,9 @@ namespace StreetRiders
 
                     if (remove)
                     {
+                        RiderState removeState;
+                        if (_riders.TryGetValue(pedHandle, out removeState))
+                            RemoveRiderBlip(removeState);
                         _riders.Remove(pedHandle);
                         group.PedHandles.RemoveAt(i);
                         if (i < group.BikeHandles.Count)
@@ -211,12 +214,29 @@ namespace StreetRiders
                 if (leader == null) continue;
                 if (leader.Position.DistanceTo(group.Destination) > 50f) continue;
 
+                // Pick new destination based on Territory/GoAway mode
                 Vector3 newDest; float newHead;
-                if (FindRoadNode(leader.Position, _destDistMin, _destDistMax, out newDest, out newHead))
+                bool found;
+
+                if (group.IsTerritory)
+                {
+                    // Territory: new destination near spawn origin, validated against group zones
+                    GroupConfig gcfg = FindGroupConfig(group.ConfigName);
+                    float radius = gcfg != null && gcfg.TerritoryRadius > 0 ? gcfg.TerritoryRadius : 150f;
+                    found = FindRoadNodeInZone(group.SpawnOrigin, radius * 0.3f, radius,
+                        group.Zones, out newDest, out newHead);
+                }
+                else
+                {
+                    // GoAway: new destination far from leader
+                    found = FindRoadNode(leader.Position, _destDistMin, _destDistMax, out newDest, out newHead);
+                }
+
+                if (found)
                 {
                     group.Destination = newDest;
                     RetaskEntireGroup(group);
-                    if (_debug) Notification.PostTicker($"~b~Riders: {group.ConfigName} new dest", true);
+                    if (_debug) Notification.PostTicker($"~b~Riders: {group.ConfigName} new dest ({(group.IsTerritory ? "Territory" : "GoAway")})", true);
                 }
             }
         }

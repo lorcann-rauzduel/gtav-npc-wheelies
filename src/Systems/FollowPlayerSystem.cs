@@ -542,7 +542,7 @@ namespace StreetRiders
                                 // Scenario active but player walked away -> break and follow
                                 if (distToPlayer > _idleFollowDist)
                                 {
-                                    Function.Call(Hash.CLEAR_PED_TASKS_IMMEDIATELY, ped.Handle);
+                                    Function.Call(Hash.CLEAR_PED_TASKS, ped.Handle);
                                     if (st != null)
                                     {
                                         st.ScenarioPlaying = false;

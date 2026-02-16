@@ -9,10 +9,13 @@ namespace StreetRiders
         {
             public int Id;
             public Vector3 Destination;
+            public Vector3 SpawnOrigin;       // Where the group originally spawned
+            public bool IsTerritory;          // true = cruising in territory, false = going away
             public List<int> PedHandles = new List<int>();
             public List<int> BikeHandles = new List<int>();
             public int LeaderBikeHandle;
             public string ConfigName;
+            public List<string> Zones;         // Allowed zones for territory destinations
 
             // -- Follow Player state --
             public GroupFollowMode FollowMode = GroupFollowMode.Autonomous;

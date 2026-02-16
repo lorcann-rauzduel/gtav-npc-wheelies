@@ -28,6 +28,8 @@ namespace StreetRiders
         // ===== General Config =====
         private bool _enabled;
         private bool _debug;
+        private bool _debugShowBlips;
+        private bool _debugShowOverhead;
         private Keys _debugKey;
         private Keys _reloadKey;
         private float _spawnDistMin;
@@ -45,6 +47,12 @@ namespace StreetRiders
         private float _wheelieActiveDist;
         private int _defaultActiveHourStart;
         private int _defaultActiveHourEnd;
+        private CruiseMode _defaultCruiseMode;
+        private int _defaultTerritoryChance;
+        private float _defaultTerritoryRadius;
+        private int _defaultBlipSprite;
+        private int _defaultBlipColor;
+        private float _defaultBlipScale;
         private HashSet<string> _wheelieExcludedModels;
 
         // ===== Test Mode =====
@@ -192,6 +200,8 @@ namespace StreetRiders
     
             _enabled = GetIniBool(fullPath, "General", "Enabled", true);
             _debug = GetIniBool(fullPath, "General", "Debug", false);
+            _debugShowBlips = GetIniBool(fullPath, "General", "ShowBlips", false);
+            _debugShowOverhead = GetIniBool(fullPath, "General", "ShowOverhead", false);
             _debugKey = ParseKey(GetIniString(fullPath, "General", "DebugKey", "Insert"));
             _reloadKey = ParseKey(GetIniString(fullPath, "General", "ReloadKey", "F10"));
             _spawnDistMin = GetIniFloat(fullPath, "General", "SpawnDistanceMin", 80.0f);
@@ -209,6 +219,12 @@ namespace StreetRiders
             _wheelieActiveDist = GetIniFloat(fullPath, "General", "WheelieActiveDistance", 80.0f);
             _defaultActiveHourStart = GetIniInt(fullPath, "General", "DefaultActiveHourStart", 0);
             _defaultActiveHourEnd = GetIniInt(fullPath, "General", "DefaultActiveHourEnd", 23);
+            _defaultCruiseMode = ParseCruiseMode(GetIniString(fullPath, "General", "DefaultCruiseMode", "GoAway"));
+            _defaultTerritoryChance = GetIniInt(fullPath, "General", "DefaultTerritoryChance", 50);
+            _defaultTerritoryRadius = GetIniFloat(fullPath, "General", "DefaultTerritoryRadius", 150.0f);
+            _defaultBlipSprite = GetIniInt(fullPath, "General", "DefaultBlipSprite", 1);
+            _defaultBlipColor = GetIniInt(fullPath, "General", "DefaultBlipColor", 3);
+            _defaultBlipScale = GetIniFloat(fullPath, "General", "DefaultBlipScale", 0.7f);
             _wheelieExcludedModels = new HashSet<string>(
                 ParseCsv(GetIniString(fullPath, "General", "WheelieExcludedModels", ""), true),
                 StringComparer.OrdinalIgnoreCase);
@@ -311,7 +327,16 @@ namespace StreetRiders
                         Weapons = ParseCsv(GetIniString(fullPath, section, "Weapons", "")),
                         CanFollowPlayer = GetIniBool(fullPath, section, "CanFollowPlayer", false),
                         MixedVehicles = GetIniBool(fullPath, section, "MixedVehicles", false),
-                        BikeColors = ParseIntCsv(GetIniString(fullPath, section, "BikeColors", ""))
+                        BikeColors = ParseIntCsv(GetIniString(fullPath, section, "BikeColors", "")),
+                        CruiseMode = ParseCruiseMode(GetIniString(fullPath, section, "CruiseMode",
+                            _defaultCruiseMode == CruiseMode.Territory ? "Territory" :
+                            _defaultCruiseMode == CruiseMode.Mixed ? "Mixed" : "GoAway")),
+                        TerritoryChance = GetIniInt(fullPath, section, "TerritoryChance", _defaultTerritoryChance),
+                        TerritoryRadius = GetIniFloat(fullPath, section, "TerritoryRadius", _defaultTerritoryRadius),
+                        BlipSprite = GetIniInt(fullPath, section, "BlipSprite", _defaultBlipSprite),
+                        BlipColor = GetIniInt(fullPath, section, "BlipColor", _defaultBlipColor),
+                        BlipScale = GetIniFloat(fullPath, section, "BlipScale", _defaultBlipScale),
+                        BlipName = GetIniString(fullPath, section, "BlipName", name)
                     };
 
                     if (cfg.Enabled && cfg.PedModels.Count > 0 && cfg.BikeModels.Count > 0)
@@ -331,7 +356,11 @@ namespace StreetRiders
                     Zones = new List<string>(),
                     DoWheelie = true,
                     ActiveHourStart = _defaultActiveHourStart,
-                    ActiveHourEnd = _defaultActiveHourEnd
+                    ActiveHourEnd = _defaultActiveHourEnd,
+                    BlipSprite = _defaultBlipSprite,
+                    BlipColor = _defaultBlipColor,
+                    BlipScale = _defaultBlipScale,
+                    BlipName = "Default"
                 });
             }
         }
@@ -377,7 +406,6 @@ namespace StreetRiders
                 FleeAttributes = GetIniInt(fullPath, section, "FleeAttributes", fb?.FleeAttributes ?? 0),
                 CombatAttribute = GetIniInt(fullPath, section, "CombatAttribute", fb?.CombatAttribute ?? 17),
                 CombatAttributeValue = GetIniBool(fullPath, section, "CombatAttributeValue", fb?.CombatAttributeValue ?? false),
-                SuffersCriticalHits = GetIniInt(fullPath, section, "SuffersCriticalHits", fb?.SuffersCriticalHits ?? -1),
 
                 // Remount
                 RemountTimeout = GetIniInt(fullPath, section, "RemountTimeout", fb?.RemountTimeout ?? 30000),
@@ -397,6 +425,13 @@ namespace StreetRiders
             if (Enum.TryParse(name, true, out Keys key))
                 return key;
             return Keys.None;
+        }
+
+        private static CruiseMode ParseCruiseMode(string value)
+        {
+            if (value.Equals("Territory", StringComparison.OrdinalIgnoreCase)) return CruiseMode.Territory;
+            if (value.Equals("Mixed", StringComparison.OrdinalIgnoreCase)) return CruiseMode.Mixed;
+            return CruiseMode.GoAway;
         }
 
         private static List<string> ParseCsv(string csv, bool toUpper = false)

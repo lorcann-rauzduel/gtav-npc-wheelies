@@ -34,6 +34,8 @@ namespace StreetRiders
             public int TurnStartTime;
 
             public int LastTalkTime;
+            public int BlipHandle;         // Minimap blip handle (0 = none)
+            public int LastMovingTime;     // Last GameTime when bike.Speed > 2 (idle-on-bike detection)
         }
     }
 }

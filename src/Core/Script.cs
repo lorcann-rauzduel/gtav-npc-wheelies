@@ -72,6 +72,7 @@ namespace StreetRiders
             if (e.KeyCode == _debugKey)
             {
                 _debug = !_debug;
+                RefreshAllBlips();
                 string zone = GetZoneName(Game.Player.Character.Position);
                 int hour = Function.Call<int>(Hash.GET_CLOCK_HOURS);
                 Notification.PostTicker($"~y~Riders Debug: {(_debug ? "ON" : "OFF")} | Zone: {zone} | Hour: {hour}h | Riders: {_riders.Count} | Groups: {_activeGroups.Count}", true);
@@ -80,6 +81,7 @@ namespace StreetRiders
             if (e.KeyCode == _reloadKey)
             {
                 LoadConfig();
+                RefreshAllBlips();
                 Notification.PostTicker($"~g~Street Riders: Reloaded! ({_groupConfigs.Count} groups) {(_testMode ? "~y~[TEST MODE]" : "")}", true);
             }
 
@@ -109,6 +111,10 @@ namespace StreetRiders
 
         private void OnAborted(object sender, EventArgs e)
         {
+            // Remove all blips before deleting entities
+            foreach (var kv in _riders)
+                RemoveRiderBlip(kv.Value);
+
             foreach (var group in _activeGroups)
             {
                 foreach (int ph in group.PedHandles)
@@ -143,7 +149,7 @@ namespace StreetRiders
 
         private void DrawDebugText(Ped p, string text, Color color)
         {
-            if (!_debug || p == null || !p.Exists()) return;
+            if (!_debugShowOverhead || p == null || !p.Exists()) return;
 
             PointF pos = GTA.UI.Screen.WorldToScreen(p.Position + new Vector3(0, 0, 6f));
             if (pos.X == 0 && pos.Y == 0) return;
@@ -152,6 +158,96 @@ namespace StreetRiders
                 GTA.UI.Font.ChaletComprimeCologne, Alignment.Center);
             t.Outline = true;
             t.Draw();
+        }
+
+        // =========================================================================
+        //  Blip Management
+        // =========================================================================
+
+        /// <summary>
+        /// Adds a minimap blip to a rider ped using the group's configured sprite, color, and scale.
+        /// Falls back to General defaults if the group config is not found.
+        /// </summary>
+        private void AddRiderBlip(Ped ped, RiderState state)
+        {
+            if (ped == null || !ped.Exists()) return;
+            if (state.BlipHandle != 0) return;
+
+            // Resolve blip settings from group config
+            int sprite = _defaultBlipSprite;
+            int color = _defaultBlipColor;
+            float scale = _defaultBlipScale;
+            string name = "Rider";
+
+            GroupConfig gcfg = FindGroupConfigByGroupId(state.GroupId);
+            if (gcfg != null)
+            {
+                sprite = gcfg.BlipSprite;
+                color = gcfg.BlipColor;
+                scale = gcfg.BlipScale;
+                name = gcfg.BlipName ?? gcfg.Name;
+            }
+
+            Blip blip = ped.AddBlip();
+            if (blip != null)
+            {
+                blip.Sprite = (BlipSprite)sprite;
+                blip.Color = (BlipColor)color;
+                blip.Scale = scale;
+                blip.Name = name;
+                blip.IsShortRange = true;
+                state.BlipHandle = blip.Handle;
+            }
+        }
+
+        /// <summary>
+        /// Finds the GroupConfig for a rider based on their group ID.
+        /// </summary>
+        private GroupConfig FindGroupConfigByGroupId(int groupId)
+        {
+            if (groupId < 0) return null;
+            foreach (var ag in _activeGroups)
+            {
+                if (ag.Id == groupId)
+                    return FindGroupConfig(ag.ConfigName);
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Removes the minimap blip from a rider.
+        /// </summary>
+        private void RemoveRiderBlip(RiderState state)
+        {
+            if (state.BlipHandle == 0) return;
+
+            Blip blip = new Blip(state.BlipHandle);
+            if (blip != null && blip.Exists())
+                blip.Delete();
+            state.BlipHandle = 0;
+        }
+
+        /// <summary>
+        /// Updates blips for all tracked riders based on _debugShowBlips.
+        /// Called when config is reloaded or debug mode toggled.
+        /// </summary>
+        private void RefreshAllBlips()
+        {
+            foreach (var kv in _riders)
+            {
+                RiderState state = kv.Value;
+                Ped ped = (Ped)Entity.FromHandle(kv.Key);
+
+                if (_debugShowBlips)
+                {
+                    if (ped != null && ped.Exists() && state.BlipHandle == 0)
+                        AddRiderBlip(ped, state);
+                }
+                else
+                {
+                    RemoveRiderBlip(state);
+                }
+            }
         }
     }
 }

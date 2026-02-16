@@ -44,7 +44,6 @@ namespace StreetRiders
             public int FleeAttributes;
             public int CombatAttribute;
             public bool CombatAttributeValue;
-            public int SuffersCriticalHits;
 
             // -- Remount Settings --
             public int RemountTimeout;

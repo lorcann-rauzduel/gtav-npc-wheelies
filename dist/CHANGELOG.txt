@@ -2,6 +2,33 @@ Changelog
 
 All notable changes to Street Riders are documented here.
 
+[1.1.2] - 2026-02-16
+
+Added
+
+* ShowBlips: Configurable minimap blips for tracked riders (independent of Debug).
+* ShowOverhead: Overhead debug text can now be toggled independently (independent of Debug).
+* Both display options work regardless of Debug = true/false. Debug only controls notification messages.
+* CruiseMode per group: Territory (riders cruise in their spawn zone), GoAway (riders leave), Mixed (random per group with configurable TerritoryChance %).
+* TerritoryRadius: configurable radius for Territory destinations around spawn origin.
+* Zone-validated Territory destinations: Territory mode now verifies each road node is within the group's configured GTA V zones (up to 5 attempts, fallback if none match). Prevents riders from cruising into adjacent zones.
+* Configurable blips per group: BlipSprite, BlipColor, BlipScale, BlipName with defaults in [General] and per-group overrides. Each gang can have its own blip color/icon on the minimap.
+
+Improved
+
+* DrivingFlags: New default 802877 (based on Rockstar's DrivingModeAvoidVehicles preset). Adds StopForVehicles, SteerAroundStationaryVehicles, SteerAroundPeds, AdjustCruiseSpeedBasedOnRoadSpeed. Riders now brake when they can't swerve and slow down in curves.
+* Remount AI: Much more aggressive natural remount — idle riders are detected via IS_PED_STILL and re-tasked within 1s (instead of waiting for full cooldown). Stuck riders get CLEAR_PED_TASKS_IMMEDIATELY + new task assignment. Force-warp is now truly a last resort.
+* Force-warp: If it does trigger, bike is uprighted (SET_VEHICLE_ON_GROUND_PROPERLY) and engine health is restored before warping.
+
+Removed
+
+* SuffersCriticalHits config option (unused, no practical effect).
+
+Fixed
+
+* TargetPitch / MaxPitch not being respected: NPC driving tasks were overriding direct speed changes every frame, making brake-based pitch control non-functional.
+* Force-warp triggering too often: Condition was logically always true due to De Morgan bug (!A || !B instead of !A && !B). Force-warp now only runs as absolute last resort after natural remount has fully failed.
+
 [1.1.1] - 2026-02-15
 
 Added

@@ -6,5 +6,6 @@ namespace StreetRiders
         private enum FollowTrigger { Proximity, Dynamic }
         private enum DismountBehavior { Wait, Continue, Freestyle }
         private enum GroupFollowMode { Autonomous, FollowingPlayer, WaitingForPlayer }
+        private enum CruiseMode { Territory, GoAway, Mixed }
     }
 }
