@@ -22,6 +22,7 @@ namespace StreetRiders
     /// </summary>
     public partial class StreetRidersScript : Script
     {
+        private static readonly string VERSION = "1.2.1";
         public StreetRidersScript()
         {
             _bikeConfigs = new Dictionary<string, WheelieConfig>(StringComparer.OrdinalIgnoreCase);
@@ -31,7 +32,7 @@ namespace StreetRiders
             KeyDown += OnKeyDown;
             Aborted += OnAborted;
 
-            Notification.PostTicker($"~g~Street Riders v1.1.0: Loaded! {_groupConfigs.Count} groups, {_bikeConfigs.Count} bike configs", true);
+            Notification.PostTicker($"~g~Street Riders v{VERSION}: Loaded! {_groupConfigs.Count} groups, {_bikeConfigs.Count} bike configs", true);
         }
 
         // =========================================================================

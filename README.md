@@ -27,7 +27,7 @@ A GTA V mod that spawns motorcycle gangs who cruise through their turf and pull 
 1. Install ScriptHookV and ScriptHookVDotNet3 in your GTA V root folder.
 2. Copy `StreetRiders.dll` into `Grand Theft Auto V/scripts/`.
 3. Copy `StreetRiders.ini` into `Grand Theft Auto V/scripts/`.
-4. Launch the game. You should see: *"Street Riders v1.1.0: Loaded!"*
+4. Launch the game. You should see: *"Street Riders v1.2.1: Loaded!"*
 
 ```
 Grand Theft Auto V/
@@ -164,6 +164,7 @@ The debug overlay shows real-time rider state: phase, pitch angle, speed, and fo
 - **Wheelies too strong?** Lower `LiftForce` and/or `TargetPitch`.
 - **Follow mode triggers too easily?** Increase `DynamicTriggerMs` and `DynamicMinSpeed`.
 - **Riders lose you too fast?** Increase `LoseRadius` (try 300).
+- **Bike doesn't move after taking it from a rider?** This was fixed by releasing handbrake/ownership when the player takes a tracked bike. Update to v1.2.1+.
 - **Riders enter combat and stop riding?** Remove `Weapons` from the group config, or set `BlockNonTempEvents = true`.
 - **Performance issues?** Lower `WheelieActiveDistance`, reduce `MaxActiveGroups`.
 

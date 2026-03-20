@@ -23,6 +23,10 @@ namespace StreetRiders
             public int TerritoryChance;     // % chance to stay in territory (Mixed mode)
             public float TerritoryRadius;   // Max distance from spawn for Territory destinations
 
+            // Relationship (per-group override)
+            public string RelationshipGroup = "";  // GTA relationship group name (empty = use ped model default)
+            public int PlayerRelationship = -1;    // -1 = None, 0 = Companion, 1 = Respect, ... 5 = Hate
+
             // Blip display (per-group override, falls back to General defaults)
             public int BlipSprite;           // GTA BlipSprite ID (0 = default circle)
             public int BlipColor;            // GTA BlipColor ID (e.g. 3 = blue)

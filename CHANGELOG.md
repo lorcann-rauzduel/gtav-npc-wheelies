@@ -2,6 +2,12 @@
 
 All notable changes to Street Riders are documented here.
 
+## [1.2.1] - 2026-03-04
+
+### Fixed
+- Taking over a rider's bike could leave it unable to move because the remount handbrake state was still active.
+- When the player enters a tracked rider bike, the script now immediately releases bike ownership and rider tracking.
+
 ## [1.1.0] - 2026-02-11
 
 ### Added

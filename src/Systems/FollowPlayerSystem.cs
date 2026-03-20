@@ -62,55 +62,102 @@ namespace StreetRiders
                 //  Uses LockPedForScript pattern to preserve rider identity & prevent
                 //  friendly fire between riders and against the player.
                 // =================================================================
+                // Player fleeing during combat: remount bikes and resume follow.
+                // Triggers: player got in a vehicle OR player moved far away on foot.
+                if ((group.FollowMode == GroupFollowMode.FollowingPlayer
+                     || group.FollowMode == GroupFollowMode.WaitingForPlayer)
+                    && IsGroupInCombat(group))
+                {
+                    float closestRiderDist = float.MaxValue;
+                    for (int r = 0; r < group.PedHandles.Count; r++)
+                    {
+                        Ped rp = (Ped)Entity.FromHandle(group.PedHandles[r]);
+                        if (rp != null && rp.Exists() && rp.IsAlive)
+                        {
+                            float d = rp.Position.DistanceTo(playerPos);
+                            if (d < closestRiderDist) closestRiderDist = d;
+                        }
+                    }
+
+                    bool playerFledFar = closestRiderDist > _followLoseRadius;
+                    bool playerMounted = playerInValidVehicle;
+                    bool shouldDisengage = playerFledFar || playerMounted;
+
+                    if (shouldDisengage)
+                    {
+                        group.BodyguardTarget = 0;
+                        group.RidersInScenario = false;
+
+                        for (int r = 0; r < group.PedHandles.Count; r++)
+                        {
+                            Ped rp = (Ped)Entity.FromHandle(group.PedHandles[r]);
+                            if (rp == null || !rp.Exists() || !rp.IsAlive) continue;
+                            RiderState rst;
+                            _riders.TryGetValue(rp.Handle, out rst);
+                            WheelieConfig rcfg = GetWheelieConfig(rst?.BikeModel ?? "");
+
+                            Function.Call(Hash.SET_BLOCKING_OF_NON_TEMPORARY_EVENTS,
+                                rp.Handle, true);
+                            Function.Call(Hash.CLEAR_PED_TASKS, rp.Handle);
+
+                            if (rst != null)
+                            {
+                                rst.InIdleScenario = false;
+                                rst.ScenarioPlaying = false;
+                            }
+
+                            if (!rp.IsInVehicle() && rst != null)
+                            {
+                                Vehicle bike = (Vehicle)Entity.FromHandle(rst.LastBikeHandle);
+                                if (bike != null && bike.Exists() && !bike.IsDead)
+                                {
+                                    Function.Call(Hash.TASK_ENTER_VEHICLE,
+                                        rp.Handle, bike.Handle, -1, -1, 2.0f, 1, 0);
+                                    rst.RemountActive = true;
+                                    rst.RemountTimeout = Game.GameTime + 15000;
+                                    rst.RemountLastTaskTime = Game.GameTime;
+                                }
+                            }
+                        }
+
+                        group.FollowMode = GroupFollowMode.FollowingPlayer;
+                        group.PlayerWasInVehicle = playerMounted;
+
+                        if (_debug)
+                            Notification.PostTicker($"~g~Bodyguard: {group.ConfigName} disengaging, remounting", true);
+                    }
+                }
+
                 if (_bodyguardEnabled && (group.FollowMode == GroupFollowMode.FollowingPlayer
                                       || group.FollowMode == GroupFollowMode.WaitingForPlayer))
                 {
-                    // Active bodyguard engagement
+                    // Active bodyguard engagement — don't touch riders, let native AI fight
                     if (group.BodyguardTarget != 0)
                     {
-                        // Periodically re-lock riders to prevent relationship drift during combat
-                        // (every 3 seconds while bodyguard is active)
-                        if ((now - group.BodyguardStartTime) % 3000 < 200)
-                            LockGroupRiders(group);
-
-                        // PRIORITY: Player remounted -> cancel fight immediately, force riders to follow
-                        if (playerInVehicle && playerInValidVehicle)
-                        {
-                            group.BodyguardTarget = 0;
-                            CancelBodyguardAndFollow(group, playerVeh);
-                            group.FollowMode = GroupFollowMode.FollowingPlayer;
-                            group.PlayerWasInVehicle = true;
-                            group.RidersInScenario = false;
-
-                            if (_debug)
-                                Notification.PostTicker($"~g~Bodyguard: {group.ConfigName} player remounted, falling in!", true);
-                            continue;
-                        }
-
-                        // Check if threat is still valid
                         Ped threat = (Ped)Entity.FromHandle(group.BodyguardTarget);
-                        bool threatGone = threat == null || !threat.Exists() || !threat.IsAlive
-                                         || threat.Position.DistanceTo(playerPos) > _bodyguardRadius * 2f
-                                         || (now - group.BodyguardStartTime) > _bodyguardDurationMs;
+                        bool threatDead = threat == null || !threat.Exists() || !threat.IsAlive;
+                        bool combatOver = !IsGroupInCombat(group);
 
-                        if (threatGone)
+                        if (threatDead || combatOver)
                         {
                             group.BodyguardTarget = 0;
 
-                            // Re-lock riders to clean state after combat ends
-                            LockGroupRiders(group);
-
-                            // Resume normal behavior based on current mode
-                            if (group.FollowMode == GroupFollowMode.FollowingPlayer && playerInValidVehicle)
-                                CancelBodyguardAndFollow(group, playerVeh);
-                            else if (group.FollowMode == GroupFollowMode.WaitingForPlayer
-                                     && _dismountBehavior == DismountBehavior.Freestyle)
-                                group.FreestyleLastRefresh = 0; // force waypoint refresh next tick
+                            for (int r = 0; r < group.PedHandles.Count; r++)
+                            {
+                                Ped rp = (Ped)Entity.FromHandle(group.PedHandles[r]);
+                                if (rp == null || !rp.Exists() || !rp.IsAlive) continue;
+                                RiderState rst;
+                                _riders.TryGetValue(rp.Handle, out rst);
+                                WheelieConfig rcfg = GetWheelieConfig(rst?.BikeModel ?? "");
+                                Function.Call(Hash.CLEAR_PED_TASKS, rp.Handle);
+                                Function.Call(Hash.SET_BLOCKING_OF_NON_TEMPORARY_EVENTS,
+                                    rp.Handle, rcfg.BlockNonTempEvents);
+                            }
 
                             if (_debug)
-                                Notification.PostTicker($"~g~Bodyguard: {group.ConfigName} threat neutralized, resuming", true);
+                                Notification.PostTicker($"~g~Bodyguard: {group.ConfigName} combat over, resuming", true);
                         }
-                        continue; // skip normal follow logic while bodyguard is active
+                        continue;
                     }
 
                     // Detect new attacker — check if player was damaged by any ped
@@ -125,6 +172,9 @@ namespace StreetRiders
 
                             if (_debug)
                                 Notification.PostTicker($"~r~Bodyguard: {group.ConfigName} engaging threat!", true);
+
+                            Function.Call(Hash.CLEAR_ENTITY_LAST_DAMAGE_ENTITY, Game.Player.Character.Handle);
+                            continue;
                         }
                         Function.Call(Hash.CLEAR_ENTITY_LAST_DAMAGE_ENTITY, Game.Player.Character.Handle);
                     }
@@ -317,8 +367,10 @@ namespace StreetRiders
                             for (int r = 0; r < group.PedHandles.Count; r++)
                             {
                                 Ped rp = (Ped)Entity.FromHandle(group.PedHandles[r]);
-                                // On ne touche pas au leader, ni aux morts, ni aux piétons (ils sont gérés par HandleRemount)
                                 if (rp == null || !rp.Exists() || !rp.IsAlive || !rp.IsInVehicle() || rp.CurrentVehicle.Handle == group.LeaderBikeHandle) 
+                                    continue;
+
+                                if (Function.Call<bool>(Hash.IS_PED_IN_COMBAT, rp.Handle, 0))
                                     continue;
 
                                 float distToLeader = rp.Position.DistanceTo(grpLeaderBike.Position);
@@ -459,6 +511,9 @@ namespace StreetRiders
                             Ped ped = (Ped)Entity.FromHandle(group.PedHandles[r]);
                             if (ped == null || !ped.Exists() || !ped.IsAlive || !ped.IsInVehicle()) continue;
 
+                            if (Function.Call<bool>(Hash.IS_PED_IN_COMBAT, ped.Handle, 0))
+                                continue;
+
                             RiderState st;
                             if (!_riders.TryGetValue(ped.Handle, out st)) continue;
 
@@ -495,6 +550,9 @@ namespace StreetRiders
                         {
                             Ped ped = (Ped)Entity.FromHandle(group.PedHandles[r]);
                             if (ped == null || !ped.Exists() || !ped.IsAlive) continue;
+
+                            if (Function.Call<bool>(Hash.IS_PED_IN_COMBAT, ped.Handle, 0))
+                                continue;
 
                             RiderState st;
                             _riders.TryGetValue(ped.Handle, out st);

@@ -82,15 +82,20 @@ namespace StreetRiders
                             Vehicle bike = (Vehicle)Entity.FromHandle(group.BikeHandles[i]);
                             if (bike != null && bike.Exists())
                             {
-                                // Only hard-delete if far from player; otherwise let the game clean up naturally
+                                Function.Call(Hash.SET_VEHICLE_HANDBRAKE, bike.Handle, false);
+                                Function.Call(Hash.SET_VEHICLE_ENGINE_ON, bike.Handle, true, true, false);
+                                Function.Call(Hash.SET_ENTITY_AS_MISSION_ENTITY, bike.Handle, false, true);
+
                                 if (bike.Position.DistanceTo(playerPos) > _cleanupDist)
                                     bike.Delete();
                                 else
                                     bike.MarkAsNoLongerNeeded();
                             }
-                            // Also release the dead/removed ped naturally if still exists
                             if (ped != null && ped.Exists())
+                            {
+                                Function.Call(Hash.SET_ENTITY_AS_MISSION_ENTITY, ped.Handle, false, true);
                                 ped.MarkAsNoLongerNeeded();
+                            }
                             group.BikeHandles.RemoveAt(i);
                         }
                     }
@@ -102,7 +107,13 @@ namespace StreetRiders
                     foreach (int bh in group.BikeHandles)
                     {
                         Vehicle v = (Vehicle)Entity.FromHandle(bh);
-                        if (v != null && v.Exists()) v.MarkAsNoLongerNeeded();
+                        if (v != null && v.Exists())
+                        {
+                            Function.Call(Hash.SET_VEHICLE_HANDBRAKE, v.Handle, false);
+                            Function.Call(Hash.SET_VEHICLE_ENGINE_ON, v.Handle, true, true, false);
+                            Function.Call(Hash.SET_ENTITY_AS_MISSION_ENTITY, v.Handle, false, true);
+                            v.MarkAsNoLongerNeeded();
+                        }
                     }
                     _activeGroups.RemoveAt(g);
                 }

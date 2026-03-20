@@ -38,6 +38,7 @@ namespace StreetRiders
         /// </summary>
         private void LockGroupRiders(ActiveGroup group)
         {
+            GroupConfig grpCfg = FindGroupConfig(group.ConfigName);
             int playerRelGroup = Function.Call<int>(Hash.GET_PED_RELATIONSHIP_GROUP_HASH,
                 Game.Player.Character.Handle);
 
@@ -64,22 +65,21 @@ namespace StreetRiders
                 // 4. Same-group = Companion (prevents friendly fire between riders)
                 Function.Call(Hash.SET_RELATIONSHIP_BETWEEN_GROUPS, 0, targetGroup, targetGroup);
 
-                // 5. Rider <-> Player = Companion (prevents attacking the player)
-                Function.Call(Hash.SET_RELATIONSHIP_BETWEEN_GROUPS, 0, targetGroup, playerRelGroup);
-                Function.Call(Hash.SET_RELATIONSHIP_BETWEEN_GROUPS, 0, playerRelGroup, targetGroup);
+                // 5. Rider <-> Player relationship from config (default Companion)
+                int playerRel = (grpCfg != null && grpCfg.PlayerRelationship >= 0)
+                    ? grpCfg.PlayerRelationship : 0;
+                Function.Call(Hash.SET_RELATIONSHIP_BETWEEN_GROUPS, playerRel, targetGroup, playerRelGroup);
+                Function.Call(Hash.SET_RELATIONSHIP_BETWEEN_GROUPS, playerRel, playerRelGroup, targetGroup);
             }
         }
 
         /// <summary>
-        /// Tasks all riders in a group to combat a specific threat.
-        /// Uses LockPedForScript pattern to preserve relationships and prevent
-        /// riders from attacking each other or the player.
+        /// Releases all riders so native AI handles combat via relationship groups.
+        /// Does NOT re-lock relationships — they are already set at spawn.
+        /// Only called once when combat starts — after this, don't touch them.
         /// </summary>
         private void TaskGroupCombat(ActiveGroup group, Ped threat)
         {
-            // Lock all riders' relationships before combat engagement
-            LockGroupRiders(group);
-
             for (int i = 0; i < group.PedHandles.Count; i++)
             {
                 Ped ped = (Ped)Entity.FromHandle(group.PedHandles[i]);
@@ -92,8 +92,28 @@ namespace StreetRiders
                 {
                     st.ScenarioPlaying = false;
                     st.IdleArrivalTime = 0;
+                    st.InIdleScenario = false;
                 }
+
+                Function.Call(Hash.CLEAR_PED_TASKS, ped.Handle);
+                Function.Call(Hash.SET_BLOCKING_OF_NON_TEMPORARY_EVENTS, ped.Handle, false);
             }
+        }
+
+        /// <summary>
+        /// Returns true if any rider in the group is still in combat.
+        /// </summary>
+        private bool IsGroupInCombat(ActiveGroup group)
+        {
+            for (int i = 0; i < group.PedHandles.Count; i++)
+            {
+                Ped ped = (Ped)Entity.FromHandle(group.PedHandles[i]);
+                if (ped == null || !ped.Exists() || !ped.IsAlive) continue;
+
+                if (Function.Call<bool>(Hash.IS_PED_IN_COMBAT, ped.Handle, 0))
+                    return true;
+            }
+            return false;
         }
 
         /// <summary>
@@ -114,10 +134,9 @@ namespace StreetRiders
                 RiderState st;
                 _riders.TryGetValue(ped.Handle, out st);
 
-                // Block events FIRST to prevent combat re-engagement, then clear tasks
-                // OnRemounted -> ApplyPedFlags restores the configured value
-                Function.Call(Hash.SET_BLOCKING_OF_NON_TEMPORARY_EVENTS, ped.Handle, true);
+                WheelieConfig cfg = GetWheelieConfig(st?.BikeModel ?? "");
                 Function.Call(Hash.CLEAR_PED_TASKS, ped.Handle);
+                Function.Call(Hash.SET_BLOCKING_OF_NON_TEMPORARY_EVENTS, ped.Handle, cfg.BlockNonTempEvents);
 
                 if (st != null)
                 {

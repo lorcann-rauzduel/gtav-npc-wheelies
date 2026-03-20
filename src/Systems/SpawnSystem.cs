@@ -206,11 +206,23 @@ namespace StreetRiders
 
                 // Preserve original relationship group, set as mission entity, then restore
                 uint relGroup = Function.Call<uint>(Hash.GET_PED_RELATIONSHIP_GROUP_HASH, ped.Handle);
+                if (!string.IsNullOrEmpty(groupCfg.RelationshipGroup))
+                    relGroup = Function.Call<uint>(Hash.GET_HASH_KEY, groupCfg.RelationshipGroup);
                 Function.Call(Hash.SET_ENTITY_AS_MISSION_ENTITY, ped.Handle, true, true);
                 Function.Call(Hash.SET_ENTITY_AS_MISSION_ENTITY, bike.Handle, true, true);
                 Function.Call(Hash.SET_PED_RELATIONSHIP_GROUP_HASH, ped.Handle, relGroup);
                 // Ensure same-group riders are companions (prevents friendly fire)
                 Function.Call(Hash.SET_RELATIONSHIP_BETWEEN_GROUPS, 0, relGroup, relGroup);
+
+                if (groupCfg.PlayerRelationship >= 0)
+                {
+                    int playerRelGroup = Function.Call<int>(Hash.GET_PED_RELATIONSHIP_GROUP_HASH,
+                        Game.Player.Character.Handle);
+                    Function.Call(Hash.SET_RELATIONSHIP_BETWEEN_GROUPS,
+                        groupCfg.PlayerRelationship, relGroup, playerRelGroup);
+                    Function.Call(Hash.SET_RELATIONSHIP_BETWEEN_GROUPS,
+                        groupCfg.PlayerRelationship, playerRelGroup, relGroup);
+                }
 
                 ApplyPedFlags(ped, cfg);
                 Function.Call(Hash.SET_ENTITY_MAX_SPEED, bike.Handle, cfg.MaxSpeed);
@@ -510,11 +522,23 @@ namespace StreetRiders
 
                 // Preserve original relationship group, set as mission entity, then restore
                 uint relGroup = Function.Call<uint>(Hash.GET_PED_RELATIONSHIP_GROUP_HASH, ped.Handle);
+                if (!string.IsNullOrEmpty(groupCfg.RelationshipGroup))
+                    relGroup = Function.Call<uint>(Hash.GET_HASH_KEY, groupCfg.RelationshipGroup);
                 Function.Call(Hash.SET_ENTITY_AS_MISSION_ENTITY, ped.Handle, true, true);
                 Function.Call(Hash.SET_ENTITY_AS_MISSION_ENTITY, bike.Handle, true, true);
                 Function.Call(Hash.SET_PED_RELATIONSHIP_GROUP_HASH, ped.Handle, relGroup);
                 // Ensure same-group riders are companions (prevents friendly fire)
                 Function.Call(Hash.SET_RELATIONSHIP_BETWEEN_GROUPS, 0, relGroup, relGroup);
+
+                if (groupCfg.PlayerRelationship >= 0)
+                {
+                    int playerRelGroup = Function.Call<int>(Hash.GET_PED_RELATIONSHIP_GROUP_HASH,
+                        Game.Player.Character.Handle);
+                    Function.Call(Hash.SET_RELATIONSHIP_BETWEEN_GROUPS,
+                        groupCfg.PlayerRelationship, relGroup, playerRelGroup);
+                    Function.Call(Hash.SET_RELATIONSHIP_BETWEEN_GROUPS,
+                        groupCfg.PlayerRelationship, playerRelGroup, relGroup);
+                }
 
                 ApplyPedFlags(ped, cfg);
                 Function.Call(Hash.SET_ENTITY_MAX_SPEED, bike.Handle, cfg.MaxSpeed);

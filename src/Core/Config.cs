@@ -83,7 +83,6 @@ namespace StreetRiders
         // ===== Bodyguard =====
         private bool _bodyguardEnabled;
         private float _bodyguardRadius;
-        private int _bodyguardDurationMs;
 
         // ===== Wheelie Configs =====
         private WheelieConfig _defaultWheelie;
@@ -266,7 +265,6 @@ namespace StreetRiders
             // Bodyguard
             _bodyguardEnabled = GetIniBool(fullPath, "FollowPlayer", "BodyguardEnabled", true);
             _bodyguardRadius = GetIniFloat(fullPath, "FollowPlayer", "BodyguardRadius", 30.0f);
-            _bodyguardDurationMs = GetIniInt(fullPath, "FollowPlayer", "BodyguardDurationMs", 15000);
 
             // Police pursuit persistence
             _policePursuitRadius = GetIniFloat(fullPath, "DefaultWheelie", "PolicePursuitRadius", 100.0f);
@@ -333,6 +331,8 @@ namespace StreetRiders
                             _defaultCruiseMode == CruiseMode.Mixed ? "Mixed" : "GoAway")),
                         TerritoryChance = GetIniInt(fullPath, section, "TerritoryChance", _defaultTerritoryChance),
                         TerritoryRadius = GetIniFloat(fullPath, section, "TerritoryRadius", _defaultTerritoryRadius),
+                        RelationshipGroup = GetIniString(fullPath, section, "RelationshipGroup", ""),
+                        PlayerRelationship = ParsePlayerRelationship(GetIniString(fullPath, section, "PlayerRelationship", "None")),
                         BlipSprite = GetIniInt(fullPath, section, "BlipSprite", _defaultBlipSprite),
                         BlipColor = GetIniInt(fullPath, section, "BlipColor", _defaultBlipColor),
                         BlipScale = GetIniFloat(fullPath, section, "BlipScale", _defaultBlipScale),
@@ -432,6 +432,18 @@ namespace StreetRiders
             if (value.Equals("Territory", StringComparison.OrdinalIgnoreCase)) return CruiseMode.Territory;
             if (value.Equals("Mixed", StringComparison.OrdinalIgnoreCase)) return CruiseMode.Mixed;
             return CruiseMode.GoAway;
+        }
+
+        private static int ParsePlayerRelationship(string value)
+        {
+            if (string.IsNullOrEmpty(value)) return -1;
+            if (value.Equals("Companion", StringComparison.OrdinalIgnoreCase)) return 0;
+            if (value.Equals("Respect", StringComparison.OrdinalIgnoreCase)) return 1;
+            if (value.Equals("Like", StringComparison.OrdinalIgnoreCase)) return 2;
+            if (value.Equals("Neutral", StringComparison.OrdinalIgnoreCase)) return 3;
+            if (value.Equals("Dislike", StringComparison.OrdinalIgnoreCase)) return 4;
+            if (value.Equals("Hate", StringComparison.OrdinalIgnoreCase)) return 5;
+            return -1; // None / unknown = don't set player relationship
         }
 
         private static List<string> ParseCsv(string csv, bool toUpper = false)

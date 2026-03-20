@@ -19,16 +19,20 @@ namespace StreetRiders
             
             int now = Game.GameTime;
             List<int> handles = new List<int>(_riders.Keys);
+            Ped playerPed = Game.Player.Character;
+            Vehicle playerVehicle = playerPed.IsInVehicle() ? playerPed.CurrentVehicle : null;
+            int playerVehicleHandle = (playerVehicle != null && playerVehicle.Exists()) ? playerVehicle.Handle : 0;
 
             foreach (int handle in handles)
             {
                 Ped ped = (Ped)Entity.FromHandle(handle);
                 if (ped == null || !ped.Exists() || !ped.IsAlive)
                 {
-                    // Rider dead/gone: release any cops that were pursuing them
                     if (ped != null && ped.Exists())
                         ReleasePursuingCops(ped.Position);
-                    RemoveRiderBlip(_riders[handle]);
+                    RiderState deadState = _riders[handle];
+                    ReleaseBikeForPlayer(deadState.LastBikeHandle);
+                    RemoveRiderBlip(deadState);
                     _riders.Remove(handle);
                     continue;
                 }
@@ -37,6 +41,24 @@ namespace StreetRiders
 
                 RiderState state = _riders[handle];
                 WheelieConfig cfg = GetWheelieConfig(state.BikeModel);
+
+                // Player took this tracked bike: release ownership and stop managing this rider.
+                // This prevents "frozen" bikes caused by remount handbrake state.
+                if (playerVehicleHandle != 0 && state.LastBikeHandle != 0 && playerVehicleHandle == state.LastBikeHandle)
+                {
+                    ReleaseBikeForPlayer(state.LastBikeHandle);
+                    state.RemountActive = false;
+                    state.WasInVehicle = false;
+                    RemoveRiderBlip(state);
+                    ped.Task.Wander();
+                    Function.Call(Hash.SET_BLOCKING_OF_NON_TEMPORARY_EVENTS, ped.Handle, false);
+                    ped.MarkAsNoLongerNeeded();
+                    _riders.Remove(handle);
+
+                    if (_debug)
+                        Notification.PostTicker("~g~Riders: bike handed to player, rider released", true);
+                    continue;
+                }
 
                 // Blip management: independent of Debug flag
                 if (_debugShowBlips)
@@ -51,6 +73,11 @@ namespace StreetRiders
 
                 // Skip riders in idle scenarios (waiting for player)
                 if (state.InIdleScenario) continue;
+
+                // Skip all task management if the ped is in combat — let native AI handle it.
+                // Don't update WasInVehicle: OnFellOff must trigger after combat ends.
+                if (Function.Call<bool>(Hash.IS_PED_IN_COMBAT, ped.Handle, 0))
+                    continue;
 
                 if (state.RemountActive && !ped.IsInVehicle())
                     HandleRemount(ped, state, cfg);
@@ -298,10 +325,11 @@ namespace StreetRiders
         /// </summary>
         private void HandleRemount(Ped ped, RiderState state, WheelieConfig cfg)
         {
-            // 1. Safety: Dead - abort remount, remove blip and stop tracking
+            // 1. Safety: Dead - abort remount, release bike and stop tracking
             if (!ped.IsAlive)
             {
                 state.RemountActive = false;
+                ReleaseBikeForPlayer(state.LastBikeHandle);
                 RemoveRiderBlip(state);
                 _riders.Remove(ped.Handle);
                 return;
@@ -318,6 +346,7 @@ namespace StreetRiders
                 || bike.IsDead || bike.IsInWater)
             {
                 state.RemountActive = false;
+                ReleaseBikeForPlayer(state.LastBikeHandle);
                 ped.Task.Wander();
                 Function.Call(Hash.SET_BLOCKING_OF_NON_TEMPORARY_EVENTS, ped.Handle, false);
                 RemoveRiderBlip(state);
@@ -379,6 +408,7 @@ namespace StreetRiders
             else
             {
                 state.RemountActive = false;
+                ReleaseBikeForPlayer(state.LastBikeHandle);
                 ped.Task.Wander();
                 Function.Call(Hash.SET_BLOCKING_OF_NON_TEMPORARY_EVENTS, ped.Handle, false);
                 RemoveRiderBlip(state);
@@ -544,6 +574,21 @@ namespace StreetRiders
             }
             
             Function.Call(Hash.SET_ENTITY_MAX_SPEED, bike.Handle, cfg.MaxSpeed);
+        }
+
+        /// <summary>
+        /// Releases an orphaned bike so the player can ride it normally.
+        /// Clears handbrake, mission-entity flag, and marks as no longer needed.
+        /// </summary>
+        private void ReleaseBikeForPlayer(int bikeHandle)
+        {
+            Vehicle bike = (Vehicle)Entity.FromHandle(bikeHandle);
+            if (bike == null || !bike.Exists()) return;
+
+            Function.Call(Hash.SET_VEHICLE_HANDBRAKE, bike.Handle, false);
+            Function.Call(Hash.SET_VEHICLE_ENGINE_ON, bike.Handle, true, true, false);
+            Function.Call(Hash.SET_ENTITY_AS_MISSION_ENTITY, bike.Handle, false, true);
+            bike.MarkAsNoLongerNeeded();
         }
     }
 }
