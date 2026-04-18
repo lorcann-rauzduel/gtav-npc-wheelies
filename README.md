@@ -186,4 +186,15 @@ The debug overlay shows real-time rider state: phase, pitch angle, speed, and fo
 
 ## License
 
-This mod is provided as-is for personal use. You are free to modify it for your own enjoyment. If you redistribute or build upon it, please give credit.
+This mod is licensed under **Creative Commons Attribution-NonCommercial-ShareAlike 4.0 (CC BY-NC-SA 4.0)**.
+
+You are free to share and adapt for personal and non-commercial use, provided you:
+- Give appropriate credit
+- Distribute derivatives under the same license
+
+See `LICENSE` file for full terms.
+
+## Contributing
+
+Contributions welcome! Open an issue or PR on GitHub:
+https://github.com/lorcann-rauzduel/gta5-npc-wheelies
