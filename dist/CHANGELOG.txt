@@ -2,6 +2,103 @@ Changelog
 
 All notable changes to Street Riders are documented here.
 
+[2.0.1] - 2026-09-06
+
+Fixed
+
+* Police pursuit no longer hijacks scripted cops: Riders skipped nothing when assigning a cop to chase a
+  wheelie rider and issued TASK_VEHICLE_CHASE/TASK_ARREST_PED on any nearby police ped, including one
+  already locked by another script (mission entity) as an arrest transport driver or pursuit actor. The
+  external retask broke the other script's role and made scripted vehicles drive away. Riders now skips
+  mission-entity cops at assignment time.
+* Cop release no longer sweeps the whole block: ReleasePursuingCops used to reset every police ped within
+  120 m even when Riders had never tasked him, wiping a scripted driver's hold mid-arrest on a passing
+  rider removal. It now releases only the cops Riders actually assigned to the removed rider.
+
+[2.0.0] - 2026-06-03
+
+Added
+
+* Wheelie stunt animations: riders in Phase.Sustained randomly play a showoff animation (rcmextreme2atv,
+  clips idle_b/c/d/e) once visible on screen, after a random 300-800ms delay into the phase.
+* No same animation twice in a row per rider (excludes last played clip from selection).
+* DoWheelieStunts per-group INI option: set to false to disable stunt animations for a specific group.
+* StuntCooldown INI option (default 8000ms): configurable delay before a rider can play another animation
+  within the same Sustained phase. Enables multiple animations per long wheelie.
+* 25% chance of upper-body animation (ANIM_FLAG_UPPERBODY): rider keeps steering while the anim plays,
+  followed by a shorter 2s cooldown. Full-body animations (75%) use the normal StuntCooldown.
+* Debug HUD: overhead label turns cyan and shows "★STUNT" while an animation is actively playing.
+* PreventFall (behavior.ini): three-mode fall prevention — Always (riders never fall), WheelieOnly
+  (protected only during active wheelie phases), or Disabled (vanilla GTA behavior). Default: Always.
+* PreventFallChance (behavior.ini): probability (0-100) that fall prevention activates for a given
+  wheelie. Only applies to WheelieOnly mode. At 50, riders occasionally bail naturally — useful for
+  combining higher pitch angles with realistic variation. Default: 100.
+* Per-bike dual physics configs: [Bike_X] defines physics when fall prevention is active (backwards
+  compatible — old configs migrate as-is). Optional [Bike_X_NoFall] defines conservative physics when
+  fall prevention is not active. Same pattern applies to [DefaultWheelie] / [DefaultWheelie_NoFall].
+  When a _NoFall section is absent, the base section is used as fallback.
+* FormationDistance (advanced.ini): configurable minimum distance followers maintain behind the group
+  leader during autonomous cruise. Separate from FollowMinDistance (player escort). Default: 50m.
+* LeaderGracePeriodMs (advanced.ini): grace period before a temporarily absent leader is replaced.
+  Prevents rapid leader switching caused by brief unavailability. Default: 4000ms.
+
+Improved
+
+* INI files restructured into a dedicated scripts/StreetRiders/ folder with 5 separate files:
+  config.ini (general settings), groups.ini (rider groups), vehicles.ini (wheelie physics and per-bike
+  tuning), behavior.ini (driving style, stunts, police, follow-player), advanced.ini (spawn distances,
+  remount, low-level safety). Each file is focused and independently reloadable.
+* Wheelie phase detection: physics-driven promotion from Attempting to Sustained when pitch is held
+  above 60% of TargetPitch for 2 consecutive seconds. Fixes cases where a rider visually held a sustained
+  wheelie but the state machine remained stuck in Attempting.
+* Obstacle detection in Sustained: replaced single forward raycast with a 3-ray fan (center + ±20°,
+  shorter side rays for vehicles/peds only). Catches lateral threats on road curves without false positives
+  from road barriers or nearby group members.
+* Driving flags: added flag 65536 (overtake). Riders now attempt to pass blocked vehicles instead of
+  queuing behind them. New default: 868413.
+* Police pursuit: cops only engage riders who are actively in Phase.Sustained (doing a wheelie).
+  Riders cruising normally or in Attempting phase no longer attract police attention.
+* Animation end detection: driving task is re-issued via IS_ENTITY_PLAYING_ANIM with a 500ms guard
+  to avoid the same-frame race condition where the flag is briefly false right after TASK_PLAY_ANIM.
+
+Fixed
+
+* Riders going straight after animation ended: TASK_PLAY_ANIM (flag 0) replaces the primary driving
+  task; once the clip finished the ped had no task left and coasted straight for the rest of the phase.
+  Fixed by detecting anim completion and re-issuing the group driving task.
+
+[1.2.2] - 2026-05-27
+
+Fixed
+
+* Wheelie lift force was still being applied when the bike was fully airborne after hitting a bump,
+  causing riders to briefly fly. A downward raycast from the rear wheel bone now gates all force
+  application — lift is blocked unless the rear wheel is within ground contact range.
+
+[1.2.1] - 2026-03-04
+
+Fixed
+
+* Taking over a rider's bike could leave it unable to move because the remount handbrake state was still active.
+* When the player enters a tracked rider bike, the script now immediately releases bike ownership and rider tracking.
+
+[1.2.0] - 2026-02-22
+
+Added
+
+* RelationshipGroup per group: assign a GTA V relationship group to riders (e.g. AMBIENT_GANG_FAMILY, AMBIENT_GANG_BALLAS). Empty = use ped model default (vanilla behavior).
+* PlayerRelationship per group: define the relationship between each group and the player (Companion, Respect, Like, Neutral, Dislike, Hate, None). Controls how riders and native AI react to the player.
+* Bodyguard mode: riders can now engage in combat with the player.
+
+Improved
+
+* SET_BLOCKING_OF_NON_TEMPORARY_EVENTS now always follows the config value (BlockNonTempEvents) instead of being hardcoded. Only blocked temporarily when strictly necessary (e.g. fleeing).
+* Bodyguard mode: removed "WORK IN PROGRESS" status. Safe to enable with BodyguardEnabled = true.
+
+Fixed
+
+* Initialization message was not showing the correct version
+
 [1.1.2] - 2026-02-16
 
 Added
@@ -16,9 +113,8 @@ Added
 
 Improved
 
-* DrivingFlags: New default 802877 (based on Rockstar's DrivingModeAvoidVehicles preset). Adds StopForVehicles, SteerAroundStationaryVehicles, SteerAroundPeds, AdjustCruiseSpeedBasedOnRoadSpeed. Riders now brake when they can't swerve and slow down in curves.
-* Remount AI: Much more aggressive natural remount — idle riders are detected via IS_PED_STILL and re-tasked within 1s (instead of waiting for full cooldown). Stuck riders get CLEAR_PED_TASKS_IMMEDIATELY + new task assignment. Force-warp is now truly a last resort.
-* Force-warp: If it does trigger, bike is uprighted (SET_VEHICLE_ON_GROUND_PROPERLY) and engine health is restored before warping.
+* DrivingFlags: New default 802877 (based on Rockstar's DrivingModeAvoidVehicles preset). Adds StopForVehicles, SteerAroundStationaryVehicles, SteerAroundPeds, AdjustCruiseSpeedBasedOnRoadSpeed. Riders are less aggressive.
+* Remount AI: Much more aggressive natural remount — idle riders are detected via IS_PED_STILL and re-tasked within 1s (instead of waiting for full cooldown). Stuck riders get CLEAR_PED_TASKS + new task assignment. Force-warp is now truly a last resort.
 
 Removed
 

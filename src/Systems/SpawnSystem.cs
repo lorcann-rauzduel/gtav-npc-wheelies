@@ -247,7 +247,7 @@ namespace StreetRiders
                 {
                     Function.Call((Hash)0xFC545A9F0626E3B6, // TASK_VEHICLE_FOLLOW
                         ped.Handle, bike.Handle, leaderBike.Handle,
-                        cfg.DriveSpeed, cfg.DrivingFlags, _followMinDistance);
+                        cfg.DriveSpeed, cfg.DrivingFlags, _formationDistance);
                 }
 
                 _riders[ped.Handle] = new RiderState
@@ -256,6 +256,7 @@ namespace StreetRiders
                     GroupId = group.Id,
                     IsSpawned = true,
                     DoWheelie = groupCfg.DoWheelie,
+                    DoWheelieStunts = groupCfg.DoWheelieStunts,
                     LastBikeHandle = bike.Handle,
                     PedHandle = ped.Handle,
                     OriginalRelGroup = relGroup
@@ -297,7 +298,7 @@ namespace StreetRiders
                     Ped p = (Ped)Entity.FromHandle(ph);
                     if (p != null && p.Exists())
                     {
-                        ReleasePursuingCops(p.Position);
+                        ReleasePursuingCops(p.Handle);
                         DeletePedAndBike(p);
                         pedCount++;
                     }
@@ -567,7 +568,7 @@ namespace StreetRiders
                 {
                     Function.Call((Hash)0xFC545A9F0626E3B6, // TASK_VEHICLE_FOLLOW
                         ped.Handle, bike.Handle, leaderBike.Handle,
-                        cfg.DriveSpeed, cfg.DrivingFlags, _followMinDistance);
+                        cfg.DriveSpeed, cfg.DrivingFlags, _formationDistance);
                 }
 
                 _riders[ped.Handle] = new RiderState
@@ -576,6 +577,7 @@ namespace StreetRiders
                     GroupId = group.Id,
                     IsSpawned = true,
                     DoWheelie = groupCfg.DoWheelie,
+                    DoWheelieStunts = groupCfg.DoWheelieStunts,
                     LastBikeHandle = bike.Handle,
                     PedHandle = ped.Handle,
                     OriginalRelGroup = relGroup
@@ -604,12 +606,17 @@ namespace StreetRiders
         {
             // Block non-temporary events (prevents flee/combat reactions)
             Function.Call(Hash.SET_BLOCKING_OF_NON_TEMPORARY_EVENTS, ped.Handle, cfg.BlockNonTempEvents);
-            
+
             // Flee attributes (0 = never flee)
             Function.Call(Hash.SET_PED_FLEE_ATTRIBUTES, ped.Handle, cfg.FleeAttributes, false);
-            
+
             // Combat attributes (17 = can't fight back when attacked)
             Function.Call(Hash.SET_PED_COMBAT_ATTRIBUTES, ped.Handle, cfg.CombatAttribute, cfg.CombatAttributeValue);
+
+            // 0 = default (can fall), 1 = never knocked off
+            // WheelieOnly is handled by phase transitions in RiderProcessor — ApplyPedFlags resets to 0
+            Function.Call(Hash.SET_PED_CAN_BE_KNOCKED_OFF_VEHICLE, ped.Handle,
+                _preventFallMode == PreventFallMode.Always ? 1 : 0);
         }
 
         /// <summary>

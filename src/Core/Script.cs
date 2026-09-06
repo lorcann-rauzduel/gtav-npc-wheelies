@@ -22,10 +22,11 @@ namespace StreetRiders
     /// </summary>
     public partial class StreetRidersScript : Script
     {
-        private static readonly string VERSION = "1.2.1";
+        private static readonly string VERSION = "2.0.1";
         public StreetRidersScript()
         {
             _bikeConfigs = new Dictionary<string, WheelieConfig>(StringComparer.OrdinalIgnoreCase);
+            _bikeConfigsNoFall = new Dictionary<string, WheelieConfig>(StringComparer.OrdinalIgnoreCase);
             _groupConfigs = new List<GroupConfig>();
             LoadConfig();
             Tick += OnTick;

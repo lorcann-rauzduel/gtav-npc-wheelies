@@ -22,7 +22,11 @@ namespace StreetRiders
             StringBuilder retVal, int size, string filePath);
 
         // ===== Constants =====
-        private static readonly string INI_PATH = "scripts\\StreetRiders.ini";
+        private static readonly string INI_PATH = "scripts\\StreetRiders\\config.ini";
+        private static readonly string GROUPS_INI_PATH = "scripts\\StreetRiders\\groups.ini";
+        private static readonly string VEHICLES_INI_PATH = "scripts\\StreetRiders\\vehicles.ini";
+        private static readonly string BEHAVIOR_INI_PATH = "scripts\\StreetRiders\\behavior.ini";
+        private static readonly string ADVANCED_INI_PATH = "scripts\\StreetRiders\\advanced.ini";
         private const int LOGIC_INTERVAL_MS = 1500;
 
         // ===== General Config =====
@@ -86,10 +90,18 @@ namespace StreetRiders
 
         // ===== Wheelie Configs =====
         private WheelieConfig _defaultWheelie;
+        private WheelieConfig _defaultWheelieNoFall;
         private Dictionary<string, WheelieConfig> _bikeConfigs;
+        private Dictionary<string, WheelieConfig> _bikeConfigsNoFall;
 
         // ===== Group Configs =====
         private List<GroupConfig> _groupConfigs;
+
+        // ===== Behavior Config =====
+        private PreventFallMode _preventFallMode;
+        private int _preventFallChance;
+        private int _leaderGracePeriodMs;
+        private int _formationDistance;
 
         // ===== Police Pursuit Config =====
         private float _policePursuitRadius;
@@ -196,36 +208,49 @@ namespace StreetRiders
         private void LoadConfig()
 {
     string fullPath = System.IO.Path.GetFullPath(INI_PATH);
-    
+    string groupsPath = System.IO.Path.GetFullPath(GROUPS_INI_PATH);
+    string vehiclesPath = System.IO.Path.GetFullPath(VEHICLES_INI_PATH);
+    string behaviorPath = System.IO.Path.GetFullPath(BEHAVIOR_INI_PATH);
+    string advancedPath = System.IO.Path.GetFullPath(ADVANCED_INI_PATH);
+
+            // config.ini [General] — only what casual users need to touch
             _enabled = GetIniBool(fullPath, "General", "Enabled", true);
             _debug = GetIniBool(fullPath, "General", "Debug", false);
             _debugShowBlips = GetIniBool(fullPath, "General", "ShowBlips", false);
             _debugShowOverhead = GetIniBool(fullPath, "General", "ShowOverhead", false);
             _debugKey = ParseKey(GetIniString(fullPath, "General", "DebugKey", "Insert"));
             _reloadKey = ParseKey(GetIniString(fullPath, "General", "ReloadKey", "F10"));
-            _spawnDistMin = GetIniFloat(fullPath, "General", "SpawnDistanceMin", 80.0f);
-            _spawnDistMax = GetIniFloat(fullPath, "General", "SpawnDistanceMax", 150.0f);
-            _cleanupDist = GetIniFloat(fullPath, "General", "CleanupDistance", 250.0f);
             _maxGroups = GetIniInt(fullPath, "General", "MaxActiveGroups", 3);
             _ridersMin = GetIniInt(fullPath, "General", "RidersPerGroupMin", 2);
             _ridersMax = GetIniInt(fullPath, "General", "RidersPerGroupMax", 5);
-            _spawnIntervalMs = GetIniInt(fullPath, "General", "SpawnIntervalMs", 15000);
-            _destDistMin = GetIniFloat(fullPath, "General", "DestinationDistanceMin", 300.0f);
-            _destDistMax = GetIniFloat(fullPath, "General", "DestinationDistanceMax", 700.0f);
-            _applyToNatural = GetIniBool(fullPath, "General", "ApplyToNaturalRiders", true);
-            _naturalScanRadius = GetIniFloat(fullPath, "General", "NaturalRiderScanRadius", 150.0f);
-            _spawnSpacing = GetIniFloat(fullPath, "General", "SpawnSpacing", 3.5f);
-            _wheelieActiveDist = GetIniFloat(fullPath, "General", "WheelieActiveDistance", 80.0f);
-            _defaultActiveHourStart = GetIniInt(fullPath, "General", "DefaultActiveHourStart", 0);
-            _defaultActiveHourEnd = GetIniInt(fullPath, "General", "DefaultActiveHourEnd", 23);
-            _defaultCruiseMode = ParseCruiseMode(GetIniString(fullPath, "General", "DefaultCruiseMode", "GoAway"));
-            _defaultTerritoryChance = GetIniInt(fullPath, "General", "DefaultTerritoryChance", 50);
-            _defaultTerritoryRadius = GetIniFloat(fullPath, "General", "DefaultTerritoryRadius", 150.0f);
-            _defaultBlipSprite = GetIniInt(fullPath, "General", "DefaultBlipSprite", 1);
-            _defaultBlipColor = GetIniInt(fullPath, "General", "DefaultBlipColor", 3);
-            _defaultBlipScale = GetIniFloat(fullPath, "General", "DefaultBlipScale", 0.7f);
+
+            // advanced.ini [Advanced] — spawn distances and timing
+            _spawnDistMin = GetIniFloat(advancedPath, "Advanced", "SpawnDistanceMin", 80.0f);
+            _spawnDistMax = GetIniFloat(advancedPath, "Advanced", "SpawnDistanceMax", 150.0f);
+            _cleanupDist = GetIniFloat(advancedPath, "Advanced", "CleanupDistance", 250.0f);
+            _spawnIntervalMs = GetIniInt(advancedPath, "Advanced", "SpawnIntervalMs", 15000);
+            _spawnSpacing = GetIniFloat(advancedPath, "Advanced", "SpawnSpacing", 3.5f);
+            _wheelieActiveDist = GetIniFloat(advancedPath, "Advanced", "WheelieActiveDistance", 80.0f);
+            _destDistMin = GetIniFloat(advancedPath, "Advanced", "DestinationDistanceMin", 300.0f);
+            _destDistMax = GetIniFloat(advancedPath, "Advanced", "DestinationDistanceMax", 700.0f);
+
+            // behavior.ini [Behavior] — natural riders
+            _applyToNatural = GetIniBool(behaviorPath, "Behavior", "ApplyToNaturalRiders", false);
+            _naturalScanRadius = GetIniFloat(behaviorPath, "Behavior", "NaturalRiderScanRadius", 150.0f);
+
+            // groups.ini [General] — group defaults
+            _defaultActiveHourStart = GetIniInt(groupsPath, "General", "DefaultActiveHourStart", 0);
+            _defaultActiveHourEnd = GetIniInt(groupsPath, "General", "DefaultActiveHourEnd", 23);
+            _defaultCruiseMode = ParseCruiseMode(GetIniString(groupsPath, "General", "DefaultCruiseMode", "GoAway"));
+            _defaultTerritoryChance = GetIniInt(groupsPath, "General", "DefaultTerritoryChance", 50);
+            _defaultTerritoryRadius = GetIniFloat(groupsPath, "General", "DefaultTerritoryRadius", 150.0f);
+            _defaultBlipSprite = GetIniInt(groupsPath, "General", "DefaultBlipSprite", 226);
+            _defaultBlipColor = GetIniInt(groupsPath, "General", "DefaultBlipColor", 3);
+            _defaultBlipScale = GetIniFloat(groupsPath, "General", "DefaultBlipScale", 0.7f);
+
+            // vehicles.ini [General] — wheelie exclusions
             _wheelieExcludedModels = new HashSet<string>(
-                ParseCsv(GetIniString(fullPath, "General", "WheelieExcludedModels", ""), true),
+                ParseCsv(GetIniString(vehiclesPath, "General", "WheelieExcludedModels", ""), true),
                 StringComparer.OrdinalIgnoreCase);
 
             // Test mode
@@ -234,75 +259,78 @@ namespace StreetRiders
             _cleanAllKey = ParseKey(GetIniString(fullPath, "TestMode", "CleanAllKey", "NumPad0"));
             _forceSpawnGroupIndex = 0;
 
-            // Follow Player
-            _followEnabled = GetIniBool(fullPath, "FollowPlayer", "Enabled", false);
-            _followToggleKey = ParseKey(GetIniString(fullPath, "FollowPlayer", "ToggleKey", "F5"));
-            string followMode = GetIniString(fullPath, "FollowPlayer", "Mode", "Dynamic");
+            // behavior.ini [FollowPlayer]
+            _followEnabled = GetIniBool(behaviorPath, "FollowPlayer", "Enabled", false);
+            _followToggleKey = ParseKey(GetIniString(behaviorPath, "FollowPlayer", "ToggleKey", "F7"));
+            string followMode = GetIniString(behaviorPath, "FollowPlayer", "Mode", "Dynamic");
             _followTrigger = followMode.Equals("Proximity", StringComparison.OrdinalIgnoreCase)
                 ? FollowTrigger.Proximity : FollowTrigger.Dynamic;
-            _followRadius = GetIniFloat(fullPath, "FollowPlayer", "FollowRadius", 60.0f);
-            _followLoseRadius = GetIniFloat(fullPath, "FollowPlayer", "LoseRadius", 200.0f);
-            _dynamicSpeedThreshold = GetIniFloat(fullPath, "FollowPlayer", "DynamicMinSpeed", 5.0f);
-            _dynamicTriggerMs = GetIniInt(fullPath, "FollowPlayer", "DynamicTriggerMs", 2000);
-            _playerVehicleType = GetIniString(fullPath, "FollowPlayer", "PlayerVehicleType", "Any");
-            string dismountMode = GetIniString(fullPath, "FollowPlayer", "DismountBehavior", "Freestyle");
+            _followRadius = GetIniFloat(behaviorPath, "FollowPlayer", "FollowRadius", 60.0f);
+            _followLoseRadius = GetIniFloat(behaviorPath, "FollowPlayer", "LoseRadius", 200.0f);
+            _dynamicSpeedThreshold = GetIniFloat(behaviorPath, "FollowPlayer", "DynamicMinSpeed", 5.0f);
+            _dynamicTriggerMs = GetIniInt(behaviorPath, "FollowPlayer", "DynamicTriggerMs", 2000);
+            _playerVehicleType = GetIniString(behaviorPath, "FollowPlayer", "PlayerVehicleType", "Any");
+            string dismountMode = GetIniString(behaviorPath, "FollowPlayer", "DismountBehavior", "Freestyle");
             if (dismountMode.Equals("Continue", StringComparison.OrdinalIgnoreCase))
                 _dismountBehavior = DismountBehavior.Continue;
             else if (dismountMode.Equals("Freestyle", StringComparison.OrdinalIgnoreCase))
                 _dismountBehavior = DismountBehavior.Freestyle;
             else
                 _dismountBehavior = DismountBehavior.Wait;
-            _idleScenarios = ParseCsv(GetIniString(fullPath, "FollowPlayer", "IdleScenarios",
+            _idleScenarios = ParseCsv(GetIniString(behaviorPath, "FollowPlayer", "IdleScenarios",
                 "WORLD_HUMAN_SMOKING, WORLD_HUMAN_STAND_MOBILE, WORLD_HUMAN_LEANING"));
-            _idleDelayMs = GetIniInt(fullPath, "FollowPlayer", "IdleDelayMs", 5000);
-            _resumeDelayMs = GetIniInt(fullPath, "FollowPlayer", "ResumeDelayMs", 2000);
-            _idleScenarioDist = GetIniFloat(fullPath, "FollowPlayer", "IdleScenarioDistance", 8.0f);
-            _idleFollowDist = GetIniFloat(fullPath, "FollowPlayer", "IdleFollowDistance", 15.0f);
-            _idleMinStayDist = GetIniFloat(fullPath, "FollowPlayer", "IdleMinStayDistance", 6.0f);
-            _idleScenarioWaitMs = GetIniInt(fullPath, "FollowPlayer", "IdleScenarioWaitMs", 4000);
-            _followMinDistance = GetIniInt(fullPath, "FollowPlayer", "FollowMinDistance", 15);
+            _idleDelayMs = GetIniInt(behaviorPath, "FollowPlayer", "IdleDelayMs", 5000);
+            _resumeDelayMs = GetIniInt(behaviorPath, "FollowPlayer", "ResumeDelayMs", 2000);
+            _idleScenarioDist = GetIniFloat(behaviorPath, "FollowPlayer", "IdleScenarioDistance", 8.0f);
+            _idleFollowDist = GetIniFloat(behaviorPath, "FollowPlayer", "IdleFollowDistance", 15.0f);
+            _idleMinStayDist = GetIniFloat(behaviorPath, "FollowPlayer", "IdleMinStayDistance", 6.0f);
+            _idleScenarioWaitMs = GetIniInt(behaviorPath, "FollowPlayer", "IdleScenarioWaitMs", 4000);
+            _followMinDistance = GetIniInt(behaviorPath, "FollowPlayer", "FollowMinDistance", 15);
 
-            // Bodyguard
-            _bodyguardEnabled = GetIniBool(fullPath, "FollowPlayer", "BodyguardEnabled", true);
-            _bodyguardRadius = GetIniFloat(fullPath, "FollowPlayer", "BodyguardRadius", 30.0f);
+            // behavior.ini [FollowPlayer] — bodyguard
+            _bodyguardEnabled = GetIniBool(behaviorPath, "FollowPlayer", "BodyguardEnabled", true);
+            _bodyguardRadius = GetIniFloat(behaviorPath, "FollowPlayer", "BodyguardRadius", 30.0f);
 
-            // Police pursuit persistence
-            _policePursuitRadius = GetIniFloat(fullPath, "DefaultWheelie", "PolicePursuitRadius", 100.0f);
-            _policePursuitMinDurationMs = GetIniInt(fullPath, "DefaultWheelie", "PolicePursuitMinDuration", 15000);
+            _preventFallMode = ParsePreventFallMode(GetIniString(behaviorPath, "Behavior", "PreventFall", "Always"));
+            _preventFallChance = GetIniInt(behaviorPath, "Behavior", "PreventFallChance", 100);
+            _leaderGracePeriodMs = GetIniInt(advancedPath, "Advanced", "LeaderGracePeriodMs", 4000);
+            _formationDistance = GetIniInt(advancedPath, "Advanced", "FormationDistance", 50);
 
-            _defaultWheelie = ReadWheelieSection(fullPath, "DefaultWheelie", null);
+            _policePursuitRadius = GetIniFloat(behaviorPath, "Behavior", "PolicePursuitRadius", 100.0f);
+            _policePursuitMinDurationMs = GetIniInt(behaviorPath, "Behavior", "PolicePursuitMinDuration", 15000);
+
+            _defaultWheelie = ReadDefaultWheelieConfig(vehiclesPath, behaviorPath, advancedPath);
+            // NoFall variant: reads [DefaultWheelie_NoFall], fallback to _defaultWheelie for unspecified keys
+            _defaultWheelieNoFall = ReadBikeOverride(vehiclesPath, "DefaultWheelie_NoFall", _defaultWheelie);
 
             if (_debug)
                 GTA.UI.Notification.Show($"Default TargetPitch loaded: {_defaultWheelie.TargetPitch}");
 
-            // 5. Bike Overrides (C'est ici que le fix est important)
-    _bikeConfigs.Clear();
-    string overrides = GetIniString(fullPath, "General", "BikeOverrides", "");
-    
-    if (overrides.Length > 0)
-    {
-        foreach (string raw in overrides.Split(','))
-        {
-            string key = raw.Trim().ToUpperInvariant(); // ex: SANCHEZ2
-            if (key.Length > 0)
-            {
-                // Construit le nom de section: "Bike_SANCHEZ2"
-                string sectionName = "Bike_" + key;
-                
-                // Charge la config en héritant de _defaultWheelie
-                WheelieConfig overrideCfg = ReadWheelieSection(fullPath, sectionName, _defaultWheelie);
-                _bikeConfigs[key] = overrideCfg;
+            _bikeConfigs.Clear();
+            _bikeConfigsNoFall.Clear();
+            string overrides = GetIniString(vehiclesPath, "General", "BikeOverrides", "");
 
-                if (_debug)
+            if (overrides.Length > 0)
+            {
+                foreach (string raw in overrides.Split(','))
                 {
-                    Notification.PostTicker("Loaded override: " + key + " | TargetPitch: " + overrideCfg.TargetPitch, true);
+                    string key = raw.Trim().ToUpperInvariant();
+                    if (key.Length > 0)
+                    {
+                        WheelieConfig overrideCfg = ReadBikeOverride(vehiclesPath, "Bike_" + key, _defaultWheelie);
+                        _bikeConfigs[key] = overrideCfg;
+
+                        // NoFall variant: reads [Bike_X_NoFall], fallback to the bike's normal config
+                        _bikeConfigsNoFall[key] = ReadBikeOverride(vehiclesPath, "Bike_" + key + "_NoFall", overrideCfg);
+
+                        if (_debug)
+                            Notification.PostTicker("Loaded override: " + key + " | TargetPitch: " + overrideCfg.TargetPitch, true);
+                    }
                 }
             }
-        }
-    }
 
             _groupConfigs.Clear();
-            string groupList = GetIniString(fullPath, "General", "Groups", "");
+            string groupList = GetIniString(groupsPath, "General", "Groups", "");
             if (!string.IsNullOrEmpty(groupList))
             {
                 foreach (string raw in groupList.Split(','))
@@ -314,29 +342,30 @@ namespace StreetRiders
                     var cfg = new GroupConfig
                     {
                         Name = name,
-                        Enabled = GetIniBool(fullPath, section, "Enabled", true),
-                        Weight = GetIniInt(fullPath, section, "Chance", 10),
-                        PedModels = ParseCsv(GetIniString(fullPath, section, "PedModels", "")),
-                        BikeModels = ParseCsv(GetIniString(fullPath, section, "BikeModels", ""), true),
-                        Zones = ParseCsv(GetIniString(fullPath, section, "Zones", ""), true),
-                        DoWheelie = GetIniBool(fullPath, section, "DoWheelie", true),
-                        ActiveHourStart = GetIniInt(fullPath, section, "ActiveHourStart", _defaultActiveHourStart),
-                        ActiveHourEnd = GetIniInt(fullPath, section, "ActiveHourEnd", _defaultActiveHourEnd),
-                        Weapons = ParseCsv(GetIniString(fullPath, section, "Weapons", "")),
-                        CanFollowPlayer = GetIniBool(fullPath, section, "CanFollowPlayer", false),
-                        MixedVehicles = GetIniBool(fullPath, section, "MixedVehicles", false),
-                        BikeColors = ParseIntCsv(GetIniString(fullPath, section, "BikeColors", "")),
-                        CruiseMode = ParseCruiseMode(GetIniString(fullPath, section, "CruiseMode",
+                        Enabled = GetIniBool(groupsPath, section, "Enabled", true),
+                        Weight = GetIniInt(groupsPath, section, "Chance", 10),
+                        PedModels = ParseCsv(GetIniString(groupsPath, section, "PedModels", "")),
+                        BikeModels = ParseCsv(GetIniString(groupsPath, section, "BikeModels", ""), true),
+                        Zones = ParseCsv(GetIniString(groupsPath, section, "Zones", ""), true),
+                        DoWheelie = GetIniBool(groupsPath, section, "DoWheelie", true),
+                        DoWheelieStunts = GetIniBool(groupsPath, section, "DoWheelieStunts", true),
+                        ActiveHourStart = GetIniInt(groupsPath, section, "ActiveHourStart", _defaultActiveHourStart),
+                        ActiveHourEnd = GetIniInt(groupsPath, section, "ActiveHourEnd", _defaultActiveHourEnd),
+                        Weapons = ParseCsv(GetIniString(groupsPath, section, "Weapons", "")),
+                        CanFollowPlayer = GetIniBool(groupsPath, section, "CanFollowPlayer", false),
+                        MixedVehicles = GetIniBool(groupsPath, section, "MixedVehicles", false),
+                        BikeColors = ParseIntCsv(GetIniString(groupsPath, section, "BikeColors", "")),
+                        CruiseMode = ParseCruiseMode(GetIniString(groupsPath, section, "CruiseMode",
                             _defaultCruiseMode == CruiseMode.Territory ? "Territory" :
                             _defaultCruiseMode == CruiseMode.Mixed ? "Mixed" : "GoAway")),
-                        TerritoryChance = GetIniInt(fullPath, section, "TerritoryChance", _defaultTerritoryChance),
-                        TerritoryRadius = GetIniFloat(fullPath, section, "TerritoryRadius", _defaultTerritoryRadius),
-                        RelationshipGroup = GetIniString(fullPath, section, "RelationshipGroup", ""),
-                        PlayerRelationship = ParsePlayerRelationship(GetIniString(fullPath, section, "PlayerRelationship", "None")),
-                        BlipSprite = GetIniInt(fullPath, section, "BlipSprite", _defaultBlipSprite),
-                        BlipColor = GetIniInt(fullPath, section, "BlipColor", _defaultBlipColor),
-                        BlipScale = GetIniFloat(fullPath, section, "BlipScale", _defaultBlipScale),
-                        BlipName = GetIniString(fullPath, section, "BlipName", name)
+                        TerritoryChance = GetIniInt(groupsPath, section, "TerritoryChance", _defaultTerritoryChance),
+                        TerritoryRadius = GetIniFloat(groupsPath, section, "TerritoryRadius", _defaultTerritoryRadius),
+                        RelationshipGroup = GetIniString(groupsPath, section, "RelationshipGroup", ""),
+                        PlayerRelationship = ParsePlayerRelationship(GetIniString(groupsPath, section, "PlayerRelationship", "None")),
+                        BlipSprite = GetIniInt(groupsPath, section, "BlipSprite", _defaultBlipSprite),
+                        BlipColor = GetIniInt(groupsPath, section, "BlipColor", _defaultBlipColor),
+                        BlipScale = GetIniFloat(groupsPath, section, "BlipScale", _defaultBlipScale),
+                        BlipName = GetIniString(groupsPath, section, "BlipName", name)
                     };
 
                     if (cfg.Enabled && cfg.PedModels.Count > 0 && cfg.BikeModels.Count > 0)
@@ -365,59 +394,136 @@ namespace StreetRiders
             }
         }
 
-        private WheelieConfig ReadWheelieSection(string fullPath, string section, WheelieConfig fb)
+        private WheelieConfig ReadDefaultWheelieConfig(string vehiclesPath, string behaviorPath, string advancedPath)
         {
             return new WheelieConfig
             {
-                // Core
-                LiftForce = GetIniFloat(fullPath, section, "LiftForce", fb?.LiftForce ?? 0.6f),
-                TorqueOffset = GetIniFloat(fullPath, section, "TorqueOffset", fb?.TorqueOffset ?? 2.0f),
-                PulseIntervalMs = GetIniInt(fullPath, section, "PulseIntervalMs", fb?.PulseIntervalMs ?? 100),
-                MinSpeed = GetIniFloat(fullPath, section, "MinSpeed", fb?.MinSpeed ?? 12.0f),
+                // vehicles.ini [DefaultWheelie] — physics & timing
+                LiftForce           = GetIniFloat(vehiclesPath, "DefaultWheelie", "LiftForce", 0.18f),
+                TorqueOffset        = GetIniFloat(vehiclesPath, "DefaultWheelie", "TorqueOffset", 1.2f),
+                MinSpeed            = GetIniFloat(vehiclesPath, "DefaultWheelie", "MinSpeed", 12.0f),
+                TargetPitch         = GetIniFloat(vehiclesPath, "DefaultWheelie", "TargetPitch", 40.0f),
+                MaxPitch            = GetIniFloat(vehiclesPath, "DefaultWheelie", "MaxPitch", 43.0f),
+                AttemptDurMin       = GetIniInt(vehiclesPath, "DefaultWheelie", "AttemptDurationMin", 3000),
+                AttemptDurMax       = GetIniInt(vehiclesPath, "DefaultWheelie", "AttemptDurationMax", 5000),
+                SustainDurMin       = GetIniInt(vehiclesPath, "DefaultWheelie", "SustainDurationMin", 5000),
+                SustainDurMax       = GetIniInt(vehiclesPath, "DefaultWheelie", "SustainDurationMax", 20000),
+                DelayMin            = GetIniInt(vehiclesPath, "DefaultWheelie", "AttemptDelayMin", 1000),
+                DelayMax            = GetIniInt(vehiclesPath, "DefaultWheelie", "AttemptDelayMax", 5000),
+                AttemptsMin         = GetIniInt(vehiclesPath, "DefaultWheelie", "AttemptsMin", 1),
+                AttemptsMax         = GetIniInt(vehiclesPath, "DefaultWheelie", "AttemptsMax", 4),
 
-                // Pitch
-                TargetPitch = GetIniFloat(fullPath, section, "TargetPitch", fb?.TargetPitch ?? 40.0f),
-                MaxPitch = GetIniFloat(fullPath, section, "MaxPitch", fb?.MaxPitch ?? 43.0f),
+                // behavior.ini [Behavior] — driving, PED, stunts, police
+                DriveSpeed          = GetIniFloat(behaviorPath, "Behavior", "DriveSpeed", 20.0f),
+                MaxSpeed            = GetIniFloat(behaviorPath, "Behavior", "MaxEntitySpeed", 25.0f),
+                DriveAbility        = GetIniFloat(behaviorPath, "Behavior", "DriveAbility", 0.8f),
+                DriveAggressiveness = GetIniFloat(behaviorPath, "Behavior", "DriveAggressiveness", 0.5f),
+                DrivingFlags        = GetIniInt(behaviorPath, "Behavior", "DrivingFlags", 868413),
+                BlockNonTempEvents  = GetIniBool(behaviorPath, "Behavior", "BlockNonTempEvents", false),
+                FleeAttributes      = GetIniInt(behaviorPath, "Behavior", "FleeAttributes", 0),
+                CombatAttribute     = GetIniInt(behaviorPath, "Behavior", "CombatAttribute", 5),
+                CombatAttributeValue = GetIniBool(behaviorPath, "Behavior", "CombatAttributeValue", false),
+                StuntCooldown       = GetIniInt(behaviorPath, "Behavior", "StuntCooldown", 8000),
+                StuntAnims          = ParseWheelieAnims(GetIniString(behaviorPath, "Behavior", "StuntAnimations", ""), null),
+                AllowPoliceArrest   = GetIniBool(behaviorPath, "Behavior", "AllowPoliceArrest", true),
 
-                // Timing
-                AttemptDurMin = GetIniInt(fullPath, section, "AttemptDurationMin", fb?.AttemptDurMin ?? 1000),
-                AttemptDurMax = GetIniInt(fullPath, section, "AttemptDurationMax", fb?.AttemptDurMax ?? 3000),
-                SustainDurMin = GetIniInt(fullPath, section, "SustainDurationMin", fb?.SustainDurMin ?? 2500),
-                SustainDurMax = GetIniInt(fullPath, section, "SustainDurationMax", fb?.SustainDurMax ?? 5000),
-                DelayMin = GetIniInt(fullPath, section, "AttemptDelayMin", fb?.DelayMin ?? 1000),
-                DelayMax = GetIniInt(fullPath, section, "AttemptDelayMax", fb?.DelayMax ?? 5000),
-                AttemptsMin = GetIniInt(fullPath, section, "AttemptsMin", fb?.AttemptsMin ?? 1),
-                AttemptsMax = GetIniInt(fullPath, section, "AttemptsMax", fb?.AttemptsMax ?? 4),
-
-                // Safety
-                RaycastDist = GetIniFloat(fullPath, section, "RaycastDistance", fb?.RaycastDist ?? 15.0f),
-                MaxSteerAngle = GetIniFloat(fullPath, section, "MaxSteeringAngle", fb?.MaxSteerAngle ?? 8.0f),
-                BrakeThreshold = GetIniFloat(fullPath, section, "BrakeThreshold", fb?.BrakeThreshold ?? 0.5f),
-
-                // Driving
-                DriveSpeed = GetIniFloat(fullPath, section, "DriveSpeed", fb?.DriveSpeed ?? 80.0f),
-                MaxSpeed = GetIniFloat(fullPath, section, "MaxEntitySpeed", fb?.MaxSpeed ?? 120.0f),
-                DriveAbility = GetIniFloat(fullPath, section, "DriveAbility", fb?.DriveAbility ?? 1.0f),
-                DriveAggressiveness = GetIniFloat(fullPath, section, "DriveAggressiveness", fb?.DriveAggressiveness ?? 1.0f),
-                DrivingFlags = GetIniInt(fullPath, section, "DrivingFlags", fb?.DrivingFlags ?? 786603),
-
-                // Ped Behavior
-                BlockNonTempEvents = GetIniBool(fullPath, section, "BlockNonTempEvents", fb?.BlockNonTempEvents ?? true),
-                FleeAttributes = GetIniInt(fullPath, section, "FleeAttributes", fb?.FleeAttributes ?? 0),
-                CombatAttribute = GetIniInt(fullPath, section, "CombatAttribute", fb?.CombatAttribute ?? 17),
-                CombatAttributeValue = GetIniBool(fullPath, section, "CombatAttributeValue", fb?.CombatAttributeValue ?? false),
-
-                // Remount
-                RemountTimeout = GetIniInt(fullPath, section, "RemountTimeout", fb?.RemountTimeout ?? 30000),
-                RemountEnterDistance = GetIniFloat(fullPath, section, "RemountEnterDistance", fb?.RemountEnterDistance ?? 5.0f),
-                RemountMaxDistance = GetIniFloat(fullPath, section, "RemountMaxDistance", fb?.RemountMaxDistance ?? 30.0f),
-                RemountMoveSpeed = GetIniFloat(fullPath, section, "RemountMoveSpeed", fb?.RemountMoveSpeed ?? 2.0f),
-                RemountTaskCooldown = GetIniInt(fullPath, section, "RemountTaskCooldown", fb?.RemountTaskCooldown ?? 5000),
-                RemountForceTimeout = GetIniInt(fullPath, section, "RemountForceTimeout", fb?.RemountForceTimeout ?? 10000),
-
-                // Police
-                AllowPoliceArrest = GetIniBool(fullPath, section, "AllowPoliceArrest", fb?.AllowPoliceArrest ?? true)
+                // advanced.ini [Advanced] — remount & low-level safety
+                PulseIntervalMs       = GetIniInt(advancedPath, "Advanced", "PulseIntervalMs", 0),
+                RaycastDist           = GetIniFloat(advancedPath, "Advanced", "RaycastDistance", 10.0f),
+                MaxSteerAngle         = GetIniFloat(advancedPath, "Advanced", "MaxSteeringAngle", 12.0f),
+                BrakeThreshold        = GetIniFloat(advancedPath, "Advanced", "BrakeThreshold", 0.5f),
+                RemountEnterDistance  = GetIniFloat(advancedPath, "Advanced", "RemountEnterDistance", 8.0f),
+                RemountMaxDistance    = GetIniFloat(advancedPath, "Advanced", "RemountMaxDistance", 100.0f),
+                RemountMoveSpeed      = GetIniFloat(advancedPath, "Advanced", "RemountMoveSpeed", 3.0f),
+                RemountTimeout        = GetIniInt(advancedPath, "Advanced", "RemountTimeout", 15000),
+                RemountTaskCooldown   = GetIniInt(advancedPath, "Advanced", "RemountTaskCooldown", 3000),
+                RemountForceTimeout   = GetIniInt(advancedPath, "Advanced", "RemountForceTimeout", 10000),
             };
+        }
+
+        private WheelieConfig ReadBikeOverride(string vehiclesPath, string section, WheelieConfig fb)
+        {
+            // Only physics/timing keys can be overridden per-bike; behavior/advanced inherit from default.
+            return new WheelieConfig
+            {
+                LiftForce     = GetIniFloat(vehiclesPath, section, "LiftForce", fb.LiftForce),
+                TorqueOffset  = GetIniFloat(vehiclesPath, section, "TorqueOffset", fb.TorqueOffset),
+                MinSpeed      = GetIniFloat(vehiclesPath, section, "MinSpeed", fb.MinSpeed),
+                TargetPitch   = GetIniFloat(vehiclesPath, section, "TargetPitch", fb.TargetPitch),
+                MaxPitch      = GetIniFloat(vehiclesPath, section, "MaxPitch", fb.MaxPitch),
+                AttemptDurMin = GetIniInt(vehiclesPath, section, "AttemptDurationMin", fb.AttemptDurMin),
+                AttemptDurMax = GetIniInt(vehiclesPath, section, "AttemptDurationMax", fb.AttemptDurMax),
+                SustainDurMin = GetIniInt(vehiclesPath, section, "SustainDurationMin", fb.SustainDurMin),
+                SustainDurMax = GetIniInt(vehiclesPath, section, "SustainDurationMax", fb.SustainDurMax),
+                DelayMin      = GetIniInt(vehiclesPath, section, "AttemptDelayMin", fb.DelayMin),
+                DelayMax      = GetIniInt(vehiclesPath, section, "AttemptDelayMax", fb.DelayMax),
+                AttemptsMin   = GetIniInt(vehiclesPath, section, "AttemptsMin", fb.AttemptsMin),
+                AttemptsMax   = GetIniInt(vehiclesPath, section, "AttemptsMax", fb.AttemptsMax),
+                // Inherited from default (not overrideable per-bike)
+                DriveSpeed           = fb.DriveSpeed,
+                MaxSpeed             = fb.MaxSpeed,
+                DriveAbility         = fb.DriveAbility,
+                DriveAggressiveness  = fb.DriveAggressiveness,
+                DrivingFlags         = fb.DrivingFlags,
+                BlockNonTempEvents   = fb.BlockNonTempEvents,
+                FleeAttributes       = fb.FleeAttributes,
+                CombatAttribute      = fb.CombatAttribute,
+                CombatAttributeValue = fb.CombatAttributeValue,
+                StuntCooldown        = fb.StuntCooldown,
+                StuntAnims           = fb.StuntAnims,
+                AllowPoliceArrest    = fb.AllowPoliceArrest,
+                PulseIntervalMs      = fb.PulseIntervalMs,
+                RaycastDist          = fb.RaycastDist,
+                MaxSteerAngle        = fb.MaxSteerAngle,
+                BrakeThreshold       = fb.BrakeThreshold,
+                RemountEnterDistance = fb.RemountEnterDistance,
+                RemountMaxDistance   = fb.RemountMaxDistance,
+                RemountMoveSpeed     = fb.RemountMoveSpeed,
+                RemountTimeout       = fb.RemountTimeout,
+                RemountTaskCooldown  = fb.RemountTaskCooldown,
+                RemountForceTimeout  = fb.RemountForceTimeout,
+            };
+        }
+
+        private static List<WheelieAnimEntry> ParseWheelieAnims(string raw, List<WheelieAnimEntry> fallback)
+        {
+            if (!string.IsNullOrWhiteSpace(raw))
+            {
+                var result = new List<WheelieAnimEntry>();
+                foreach (string entry in raw.Split(','))
+                {
+                    string trimmed = entry.Trim();
+                    int colon = trimmed.IndexOf(':');
+                    if (colon > 0)
+                    {
+                        result.Add(new WheelieAnimEntry
+                        {
+                            Dict = trimmed.Substring(0, colon).Trim(),
+                            Clip = trimmed.Substring(colon + 1).Trim()
+                        });
+                    }
+                }
+                if (result.Count > 0) return result;
+            }
+            return fallback ?? DefaultWheelieAnims();
+        }
+
+        private static List<WheelieAnimEntry> DefaultWheelieAnims()
+        {
+            return new List<WheelieAnimEntry>
+            {
+                new WheelieAnimEntry { Dict = "rcmextreme2atv", Clip = "idle_b" },
+                new WheelieAnimEntry { Dict = "rcmextreme2atv", Clip = "idle_c" },
+                new WheelieAnimEntry { Dict = "rcmextreme2atv", Clip = "idle_d" },
+                new WheelieAnimEntry { Dict = "rcmextreme2atv", Clip = "idle_e" },
+            };
+        }
+
+        private static PreventFallMode ParsePreventFallMode(string value)
+        {
+            if (value.Equals("WheelieOnly", StringComparison.OrdinalIgnoreCase)) return PreventFallMode.WheelieOnly;
+            if (value.Equals("Disabled", StringComparison.OrdinalIgnoreCase)) return PreventFallMode.Disabled;
+            return PreventFallMode.Always;
         }
 
         private static Keys ParseKey(string name)
@@ -468,8 +574,16 @@ namespace StreetRiders
             return result;
         }
 
-        private WheelieConfig GetWheelieConfig(string bikeModel)
+        private WheelieConfig GetWheelieConfig(string bikeModel, bool wheelieProtected = false)
         {
+            // [Bike_X_NoFall] / [DefaultWheelie_NoFall] = used when fall prevention IS active (rider doesn't fall)
+            // [Bike_X] / [DefaultWheelie] = base, used when fall prevention is NOT active (or as fallback)
+            if (wheelieProtected)
+            {
+                if (!string.IsNullOrEmpty(bikeModel) && _bikeConfigsNoFall.TryGetValue(bikeModel, out WheelieConfig noFallCfg))
+                    return noFallCfg;
+                return _defaultWheelieNoFall;
+            }
             if (!string.IsNullOrEmpty(bikeModel) && _bikeConfigs.TryGetValue(bikeModel, out WheelieConfig cfg))
                 return cfg;
             return _defaultWheelie;

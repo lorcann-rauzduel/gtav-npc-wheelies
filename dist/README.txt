@@ -1,148 +1,174 @@
 ===============================================================================
-  Street Riders v1.1.2 - Realistic NPC Wheelies
+  Street Riders v2.0.0 - Realistic NPC Wheelies
   for Grand Theft Auto V
 ===============================================================================
 
-A GTA V mod that brings realistic physics-based wheelies to Los Santos. Spawn dynamic motorcycle gangs that patrol territories and ride in formation, or apply wheelies to natural traffic riders.
+Spawn motorcycle gangs that cruise their turf and pull realistic wheelies.
+Physics-based system with stunt animations, fall prevention, and full
+per-bike tuning.
 
-REQUIREMENTS:
+-------------------------------------------------------------------------------
+  WHAT'S NEW IN v2.0.0
+-------------------------------------------------------------------------------
+
+  BREAKING CHANGE — Config files have moved to a subfolder:
+    scripts/StreetRiders/  (5 separate files, see Installation below)
+    Old StreetRiders.ini and StreetRiders_Advanced.ini are no longer read.
+
+  New features:
+  - Stunt animations during sustained wheelies (showoff tricks, configurable)
+  - PreventFall system: Always / WheelieOnly / Disabled + per-wheelie chance
+  - Dual physics per bike: [Bike_X] (no protection) / [Bike_X_NoFall] (protected)
+  - FormationDistance: configurable gap between followers and leader
+  - LeaderGracePeriodMs: prevents rapid leader switching after brief unavailability
+  - Police pursuit now restricted to Phase.Sustained only
+  - Overtake flag added to default DrivingFlags
+  - Wheelie phase detection: physics-driven Attempting → Sustained promotion
+  - 3-ray fan obstacle detection during sustained wheelies
+
+-------------------------------------------------------------------------------
+  REQUIREMENTS
+-------------------------------------------------------------------------------
+
   - GTA V (latest version)
-  - ScriptHookV            
-  - ScriptHookVDotNet v3   
+  - ScriptHookV           http://www.dev-c.com/gtav/scripthookv/
+  - ScriptHookVDotNet v3  https://github.com/scripthookvdotnet/scripthookvdotnet
 
-INSTALLATION:
+-------------------------------------------------------------------------------
+  INSTALLATION
+-------------------------------------------------------------------------------
+
   1. Install ScriptHookV and ScriptHookVDotNet3 in your GTA V root folder.
-  2. Copy the "scripts" folder from this archive into your GTA V root folder.
-  3. Launch the game. You should see: "Street Riders v1.1.0: Loaded!"
+  2. Copy StreetRiders.dll into Grand Theft Auto V/scripts/
+  3. Copy the entire StreetRiders/ folder into Grand Theft Auto V/scripts/
+  4. Launch the game. You should see: "Street Riders v2.0.0: Loaded!"
 
-  Your folder structure should look like this:
+  Folder structure:
 
     Grand Theft Auto V/
       ScriptHookV.dll
       ScriptHookVDotNet3.dll
       scripts/
         StreetRiders.dll
-        StreetRiders.ini
+        StreetRiders/
+          config.ini      <- general settings, keybinds
+          groups.ini      <- rider groups, zones, spawn hours
+          vehicles.ini    <- wheelie physics, per-bike tuning
+          behavior.ini    <- driving, stunts, police, follow-player
+          advanced.ini    <- spawn distances, remount, low-level
 
-CONFIGURATION GUIDE:
-  Edit StreetRiders.ini in any text editor. Press F10 in-game to hot-reload.
+  MIGRATING FROM v1.x:
+    Your old StreetRiders.ini groups ([Group_Families], etc.) go into groups.ini.
+    Wheelie physics ([DefaultWheelie], [Bike_X]) go into vehicles.ini.
+    Everything else is split across config.ini, behavior.ini, and advanced.ini.
+    The new files ship with sensible defaults — start fresh and copy your groups.
 
-  [General]
-    Enabled                  true       Enable/disable the entire mod
-    Debug                    false      Enable notification debug messages
-    ShowBlips                true       Show rider blips on minimap (independent of Debug)
-    ShowOverhead             false      Show overhead text above riders (independent of Debug)
-    DebugKey                 Insert     Toggle debug overlay in-game
-    ReloadKey                F10        Hot-reload configuration
+-------------------------------------------------------------------------------
+  CONFIGURATION — QUICK OVERVIEW
+-------------------------------------------------------------------------------
 
-    MaxActiveGroups          1          Max simultaneous rider groups
-    RidersPerGroupMin/Max    2 / 4      Riders per group
-    SpawnDistanceMin/Max     120 / 150  Spawn distance from player (m)
-    SpawnSpacing             5.0        Distance between riders when spawning (m)
-    CleanupDistance          250        Remove riders beyond this distance
-    SpawnIntervalMs          15000      Time between spawn attempts (ms)
-    WheelieActiveDistance    200        Wheelie physics range from player (m)
-    DestinationDistMin/Max   300 / 700  Destination range for GoAway mode (m)
-    ApplyToNaturalRiders     false      Apply wheelie AI to traffic bikers
-    NaturalRiderScanRadius   200        Scan radius for natural riders (m)
+  All files are in scripts/StreetRiders/. Reload any file in-game with F10.
 
-    DefaultActiveHourStart   0          Default active hours start (0-23)
-    DefaultActiveHourEnd     23         Default active hours end (0-23)
+  config.ini — things you'll actually change:
+    Enabled              true      Enable/disable the mod
+    Debug                false     Enable debug notifications
+    ShowBlips            true      Show rider blips on minimap
+    ShowOverhead         false     Show overhead debug text above riders
+    ReloadKey            F10       Hot-reload all config files
+    DebugKey             Insert    Toggle debug overlay
+    MaxActiveGroups      1         Max simultaneous rider groups
+    RidersPerGroupMin    2         Min riders per group
+    RidersPerGroupMax    4         Max riders per group
 
-    DefaultCruiseMode        Territory  Default cruise behavior (Territory/GoAway/Mixed)
-    DefaultTerritoryChance   50         % chance to stay in territory (Mixed mode)
-    DefaultTerritoryRadius   150.0      Max distance from spawn for Territory (m)
+  groups.ini — define rider gangs:
+    Groups = Families, Ballas, Vagos, ...   (active group list)
+    DefaultActiveHourStart/End              Default hours for all groups
+    DefaultCruiseMode  Territory/GoAway/Mixed
+    [Group_Families], [Group_Ballas], ...   One section per group
 
-    DefaultBlipSprite        226        Blip icon (1=circle, 226=motorcycle, etc.)
-    DefaultBlipColor         3          Blip color (0=white, 1=red, 2=green, 3=blue)
-    DefaultBlipScale         0.7        Blip size (0.5=small, 0.7=normal, 1.0=large)
+    Per-group settings:
+      PedModels, BikeModels, BikeColors, MixedVehicles
+      DoWheelie, DoWheelieStunts
+      Zones, ActiveHourStart/End
+      Weapons, CanFollowPlayer
+      RelationshipGroup, PlayerRelationship
+      CruiseMode, TerritoryChance, TerritoryRadius
+      BlipColor, BlipSprite, BlipScale, BlipName
 
-    WheelieExcludedModels    BMX, ...   Bikes that never do wheelies
-    BikeOverrides            SANCHEZ2, BF400   Bikes with custom [Bike_XXX] configs
-    Groups                   Families, Ballas, ...   Rider group sections
+  vehicles.ini — wheelie physics:
+    WheelieExcludedModels    Bikes that never do wheelies
+    BikeOverrides            Bikes with per-model tuning sections
 
-  [FollowPlayer]
-    Enabled                  false      Enable follow player system
-    ToggleKey                F7         Manual toggle key
-    Mode                     Dynamic    Proximity = nearby / Dynamic = speed-based
-    FollowRadius             100.0      Trigger distance (m)
-    LoseRadius               200.0      Cancel distance (m)
-    DynamicMinSpeed          12.0       Min player speed for Dynamic (m/s)
-    DynamicTriggerMs         2000       Sustained speed time before trigger (ms)
-    PlayerVehicleType        Any        Any / BikeOnly / TwoWheeler
-    FollowMinDistance        8          Min distance for TASK_VEHICLE_FOLLOW (m)
+    [DefaultWheelie]         Base physics (when fall prevention OFF)
+      LiftForce = 0.18       Upward force. Too low = won't lift. Too high = flips.
+      TorqueOffset = 1.2     Lever arm (higher = more rotation torque)
+      TargetPitch = 40.0     Target angle in degrees
+      MaxPitch = 43.0        Correction kicks in above this angle
+      MinSpeed = 12.0        Min speed to attempt wheelie
+      AttemptDurationMin/Max, SustainDurationMin/Max, AttemptDelayMin/Max
 
-  Dismount Behavior (in [FollowPlayer]):
-    DismountBehavior         Freestyle  Wait / Continue / Freestyle
-    IdleScenarios            WORLD_HUMAN_SMOKING, ...
-    IdleDelayMs              8000       Delay before riders dismount (ms)
-    ResumeDelayMs            3000       Delay before riders resume following (ms)
-    IdleScenarioDistance     6.0        Distance to start idle scenarios (m)
-    IdleFollowDistance       8.0        Distance to follow on foot (m)
-    IdleMinStayDistance      6.0        Min distance riders stay near player (m)
-    IdleScenarioWaitMs       4000       Delay before starting a scenario (ms)
+    [DefaultWheelie_NoFall]  Physics when fall prevention IS active (higher values safe)
+    [Bike_SANCHEZ2]          Per-bike override (no protection)
+    [Bike_SANCHEZ2_NoFall]   Per-bike override (with fall prevention)
 
-  Bodyguard Mode (in [FollowPlayer]):
-    BodyguardEnabled         false      WORK IN PROGRESS — DO NOT ENABLE
-    BodyguardRadius          30.0       Detect attackers radius (m)
-    BodyguardDurationMs      15000      Max engagement duration (ms)
+    Migration note: your existing [Bike_X] configs map to the "no protection" variant.
+    Add [Bike_X_NoFall] with higher values to take advantage of fall prevention.
 
-  [Group_XXX] - Rider Groups:
-    Enabled                  true       Enable this group
-    Chance                   12         Spawn chance (relative, higher = more likely)
-    PedModels                ...        Comma-separated ped model names
-    BikeModels               ...        Comma-separated bike model names
-    MixedVehicles            true       Each rider gets a different bike
-    BikeColors               0, 2, 38   GTA V paint color IDs
-    DoWheelie                true       Enable wheelies for this group
-    Zones                    CHAMH, ... GTA V zone codes (empty = everywhere)
-    ActiveHourStart/End      18 / 4     Active time window (wraps midnight)
-    Weapons                  ...        (optional) Comma-separated weapon names
-    CanFollowPlayer          true       Allow this group to follow the player
-    CruiseMode               Territory  Override default cruise mode
-    TerritoryChance          60         Override territory % (Mixed mode)
-    TerritoryRadius          150.0      Override territory radius (m)
-    BlipSprite               226        Override blip icon
-    BlipColor                2          Override blip color
-    BlipScale                0.7        Override blip size
-    BlipName                 Families   Override blip label on minimap
+  behavior.ini — how riders act:
+    PreventFall      Always / WheelieOnly / Disabled
+                     Always = riders never fall off
+                     WheelieOnly = only protected during active wheelie
+                     Disabled = vanilla GTA physics
+    PreventFallChance  0-100 (WheelieOnly only): % chance protection triggers per wheelie
+                       50 = occasional natural bails + higher angles when protected
 
-  [DefaultWheelie] / [Bike_XXX] - Wheelie Tuning:
-    LiftForce                0.18       Upward force (0.10=gentle, 0.30=strong)
-    TorqueOffset             1.2        Lever arm in meters
-    TargetPitch              40.0       Target wheelie angle (degrees)
-    MaxPitch                 43.0       Emergency correction angle
-    MinSpeed                 12.0       Min speed to attempt wheelie
+    DriveSpeed, MaxEntitySpeed, DriveAbility, DriveAggressiveness
+    DrivingFlags     Driving style bitmask (https://vespura.com/fivem/drivingstyle/)
+    ApplyToNaturalRiders / NaturalRiderScanRadius
+    BlockNonTempEvents, FleeAttributes, CombatAttribute
 
-  Driving (in [DefaultWheelie]):
-    DriveSpeed               20.0       Cruise speed (m/s)
-    MaxEntitySpeed           25.0       Max entity speed cap (m/s)
-    DriveAbility             0.8        NPC driving ability (0.0-1.0)
-    DriveAggressiveness      0.5        NPC aggressiveness (0.0-1.0)
-    DrivingFlags             802877     Driving style bitmask (see INI comments)
-                                        802877 = safe evasive (default)
-                                        803644 = aggressive evasive (alternative)
+    StuntCooldown    Delay between stunt animations in Sustained (ms)
+    StuntAnimations  dict:clip, dict:clip, ...  (default: rcmextreme2atv idle tricks)
 
-  Ped Behavior (in [DefaultWheelie]):
-    BlockNonTempEvents       true       Block ambient reactions
-    FleeAttributes           0          Flee behavior flags
-    CombatAttribute          17         Combat attribute ID
-    CombatAttributeValue     false      Combat attribute toggle
+    AllowPoliceArrest        Police chase riders in Phase.Sustained only
+    PolicePursuitRadius      Lock-on distance (m)
+    PolicePursuitMinDuration Min time cops stay on a target (ms)
 
-  Remount (in [DefaultWheelie]):
-    RemountEnterDistance      8.0       Distance to trigger TASK_ENTER_VEHICLE (m)
-    RemountMaxDistance        100.0     Max distance before rider gives up (m)
-    RemountMoveSpeed          3.0      Run speed toward bike (m/s)
-    RemountTimeout            15000    Total remount timeout (ms)
-    RemountTaskCooldown       3000     Cooldown between task reassignments (ms)
-    RemountForceTimeout       10000    Force-warp timeout as last resort (ms, 0=off)
+    [FollowPlayer]   Full follow-player system config
 
-  Police (in [DefaultWheelie]):
-    AllowPoliceArrest        false       Police can chase and arrest riders
-    PolicePursuitRadius      100.0     Max lock-on distance (m)
-    PolicePursuitMinDuration 60000     Min lock-on time per target (ms)
+  advanced.ini — rarely changed:
+    SpawnDistanceMin/Max, CleanupDistance, SpawnIntervalMs, SpawnSpacing
+    WheelieActiveDistance    Wheelie physics range from player (m)
+    DestinationDistanceMin/Max
+    FormationDistance        Gap between followers and leader (default 50m)
+    LeaderGracePeriodMs      Grace period before leader replacement (default 4000ms)
+    PulseIntervalMs, RaycastDistance, MaxSteeringAngle, BrakeThreshold
+    RemountEnterDistance, RemountMaxDistance, RemountMoveSpeed
+    RemountTimeout, RemountTaskCooldown, RemountForceTimeout
 
-ZONE REFERENCE:
+-------------------------------------------------------------------------------
+  WHEELIE TUNING TIPS
+-------------------------------------------------------------------------------
+
+  Bike doesn't lift?       Raise LiftForce
+  Lifts too hard?          Lower LiftForce
+  Angle too low?           Raise TargetPitch (also needs enough LiftForce to reach it)
+  Bike flips over?         Lower MaxPitch
+  Still bouncy?            Lower LiftForce + raise TorqueOffset
+
+  With PreventFall = Always or WheelieOnly:
+    Use [Bike_X_NoFall] with higher TargetPitch/LiftForce for aggressive wheelies.
+    [Bike_X] keeps conservative values for when the rider can fall.
+
+  With PreventFall = WheelieOnly + PreventFallChance = 50:
+    Half the time riders push aggressive angles (NoFall config).
+    Half the time they ride conservatively (base config) and may bail.
+    Best balance between spectacle and realism.
+
+-------------------------------------------------------------------------------
+  ZONE REFERENCE
+-------------------------------------------------------------------------------
+
   CHAMH  = Chamberlain Hills    SANDY  = Sandy Shores
   DAVIS  = Davis                GRAPES = Grapeseed
   STRAW  = Strawberry           PALETO = Paleto Bay
@@ -152,38 +178,72 @@ ZONE REFERENCE:
   EBURO  = El Burro Heights     ROCKF  = Rockford Hills
   MURRI  = Murrieta Heights     DELPE  = Del Perro
 
-TEST MODE & DEBUG:
-  Enable with [TestMode] Enabled = true
+-------------------------------------------------------------------------------
+  DEBUG & TEST MODE
+-------------------------------------------------------------------------------
 
-  Insert   = Toggle debug overlay
-  F10      = Hot-reload config
-  NumPad1  = Force-spawn a group
-  NumPad0  = Delete all riders
+  Enable TestMode in config.ini. Reload config with F10 at any time.
 
-KNOWN ISSUES:
-  - Weapons: equipping riders with weapons is optional and may cause them
-    to enter combat, interrupting riding tasks. Use with caution.
-  - Bodyguard mode: present in the INI but still under development.
-    Do NOT enable BodyguardEnabled - will be released in a future update.
-  - Remount: riders usually recover after falling, but edge cases exist.
-    Idle riders stuck on their bike are auto-retasked after 5 seconds.
+  Insert    Toggle debug notifications
+  F10       Hot-reload all config files (no restart needed)
+  NumPad1   Force-spawn a group near the player
+  NumPad0   Delete all active riders
 
-TROUBLESHOOTING:
-  - Riders don't spawn? Check zone and active hours. Enable Debug.
-  - Riders crash into cars? Adjust DrivingFlags in [DefaultWheelie].
-    Try 803644 for aggressive evasion (off-road, wrong way overtaking).
-  - Wheelies too strong? Lower LiftForce and/or TargetPitch.
-  - Follow triggers too easily? Increase DynamicTriggerMs and DynamicMinSpeed.
-  - Riders lose you too fast? Increase LoseRadius (try 300).
-  - Combat interrupts riding? Remove Weapons or set BlockNonTempEvents = true.
-  - Performance issues? Lower WheelieActiveDistance, reduce MaxActiveGroups.
-  - Blips not showing? Check ShowBlips = true in [General].
-  - Riders stay in wrong area? Check Zones and CruiseMode in group config.
+  Overhead debug (ShowOverhead = true):
+    [S:BF400]  Sustained 2/3    <- rider type, bike, phase, attempts
+    Pitch:42.1  Speed:18         <- current pitch angle and speed
+    PreventFall:ON  LIFT:0.18    <- fall prevention state + force applied
 
-USEFUL LINKS:
-  Zone codes         https://docs.fivem.net/natives/?_0xCD90657D4C30E1CA
-  Driving flags      https://docs.fivem.net/natives/?_0xDACE1BE37D88AF67
-  Blip sprites       https://docs.fivem.net/docs/game-references/blips/
-  Vehicle colors     https://wiki.rage.mp/index.php?title=Vehicle_Colors
-  Motorcycle models  https://wiki.gtanet.work/index.php/Motorcycles
-  Weapon list        https://wiki.rage.mp/index.php?title=Weapons
+-------------------------------------------------------------------------------
+  TROUBLESHOOTING
+-------------------------------------------------------------------------------
+
+  Riders don't spawn?
+    Check Zones and ActiveHourStart/End in groups.ini. Enable Debug.
+
+  Wheelies too weak / too strong?
+    Adjust LiftForce and TargetPitch in vehicles.ini.
+    TargetPitch doesn't guarantee the angle — LiftForce must be high enough.
+
+  Riders crash into cars?
+    Adjust DrivingFlags in behavior.ini.
+    Use https://vespura.com/fivem/drivingstyle/ to calculate flags.
+
+  Riders keep overtaking each other?
+    Increase FormationDistance in advanced.ini (default 50m, try 60-80m).
+
+  Leader switches too often?
+    Increase LeaderGracePeriodMs in advanced.ini (default 4000ms).
+
+  Follow mode triggers too easily?
+    Increase DynamicTriggerMs and DynamicMinSpeed in behavior.ini.
+
+  Riders lose you too fast?
+    Increase LoseRadius in behavior.ini [FollowPlayer] (try 300).
+
+  Stunt animations cause riders to veer off?
+    Reduce StuntCooldown or increase RaycastDistance in advanced.ini.
+    This is a GTA engine limitation — see the note in behavior.ini.
+
+  Performance issues?
+    Lower WheelieActiveDistance and MaxActiveGroups.
+
+-------------------------------------------------------------------------------
+  USEFUL LINKS
+-------------------------------------------------------------------------------
+
+  Zone codes          https://docs.fivem.net/natives/?_0xCD90657D4C30E1CA
+  Driving flags       https://vespura.com/fivem/drivingstyle/
+  Blip sprites        https://docs.fivem.net/docs/game-references/blips/
+  Blip colors         https://docs.fivem.net/docs/game-references/blips/
+  Vehicle colors      https://wiki.rage.mp/index.php?title=Vehicle_Colors
+  Motorcycle models   https://wiki.gtanet.work/index.php/Motorcycles
+  Weapon list         https://wiki.rage.mp/index.php?title=Weapons
+  Keys enum           https://learn.microsoft.com/en-us/dotnet/api/system.windows.forms.keys
+
+-------------------------------------------------------------------------------
+  CREDITS
+-------------------------------------------------------------------------------
+
+  ScriptHookV         Alexander Blade   http://www.dev-c.com/gtav/scripthookv/
+  ScriptHookVDotNet   crosire & community

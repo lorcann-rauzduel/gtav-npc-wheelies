@@ -37,6 +37,9 @@ namespace StreetRiders
             public int FreestyleLastRefresh;  // GameTime when waypoints were last updated
             public int FreestyleLastRetask;   // GameTime of last retask (grace period for idle check)
             public int LeaderStuckStartTime;
+
+            // GameTime when the leader was first detected as invalid (0 = leader is ok)
+            public int LeaderLostTime;
         }
     }
 }

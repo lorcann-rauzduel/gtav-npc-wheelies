@@ -13,6 +13,7 @@ namespace StreetRiders
             public List<string> BikeModels;
             public List<string> Zones;
             public bool DoWheelie;
+            public bool DoWheelieStunts;
             public int ActiveHourStart;
             public int ActiveHourEnd;
             public List<string> Weapons = new List<string>();

@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+
 namespace StreetRiders
 {
     public partial class StreetRidersScript
@@ -5,6 +7,13 @@ namespace StreetRiders
         /// <summary>
         /// Per-bike wheelie tuning. See Physics/WheeliePhysics.cs for how these are used.
         /// </summary>
+        private struct WheelieAnimEntry
+        {
+            public string Dict;
+            public string Clip;
+            public string Key => Dict + ":" + Clip;
+        }
+
         private class WheelieConfig
         {
             // -- Core --
@@ -26,6 +35,8 @@ namespace StreetRiders
             public int DelayMax;
             public int AttemptsMin;
             public int AttemptsMax;
+            public int StuntCooldown;
+            public List<WheelieAnimEntry> StuntAnims;
 
             // -- Safety --
             public float RaycastDist;

@@ -29,7 +29,7 @@ namespace StreetRiders
                 if (ped == null || !ped.Exists() || !ped.IsAlive)
                 {
                     if (ped != null && ped.Exists())
-                        ReleasePursuingCops(ped.Position);
+                        ReleasePursuingCops(ped.Handle);
                     RiderState deadState = _riders[handle];
                     ReleaseBikeForPlayer(deadState.LastBikeHandle);
                     RemoveRiderBlip(deadState);
@@ -40,7 +40,7 @@ namespace StreetRiders
                 if (ped.Handle == Game.Player.Character.Handle) continue;
 
                 RiderState state = _riders[handle];
-                WheelieConfig cfg = GetWheelieConfig(state.BikeModel);
+                WheelieConfig cfg = GetWheelieConfig(state.BikeModel, state.WheelieProtected);
 
                 // Player took this tracked bike: release ownership and stop managing this rider.
                 // This prevents "frozen" bikes caused by remount handbrake state.
@@ -96,7 +96,7 @@ namespace StreetRiders
                 // Bike truly destroyed or submerged: eject ped and release (EngineHealth 0 is just damaged, not destroyed)
                 if (bike.IsDead || bike.IsInWater)
                 {
-                    ReleasePursuingCops(ped.Position);
+                    ReleasePursuingCops(ped.Handle);
                     ped.Task.LeaveVehicle();
                     Script.Wait(0);
                     ped.Task.Wander();
@@ -143,7 +143,7 @@ namespace StreetRiders
                 //  POLICE LOGIC (Check every ~1s spread via handle modulo)
                 //  Cops lock onto a target and stay on it while alive + within radius
                 // =========================================================================
-                if (cfg.AllowPoliceArrest && (Game.GameTime + handle) % 1000 < 50)
+                if (cfg.AllowPoliceArrest && state.Phase == Phase.Sustained && (Game.GameTime + handle) % 1000 < 50)
                 {
                     Ped[] nearbyPeds = World.GetNearbyPeds(ped.Position, 15.0f);
                     foreach (Ped cop in nearbyPeds)
@@ -151,6 +151,10 @@ namespace StreetRiders
                         if (!Function.Call<bool>(Hash.DOES_ENTITY_EXIST, cop.Handle)) continue;
                         if (Function.Call<int>(Hash.GET_PED_TYPE, cop.Handle) != 6) continue;
                         if (!cop.IsAlive) continue;
+                        // Ne jamais prendre la main sur un ped qu'un autre script (mission, pursuit,
+                        // arrestation, conduite scriptée…) a verrouillé : on casserait sa logique en lui
+                        // imposant un TASK_VEHICLE_CHASE. Un ped mission entity n'est pas à nous.
+                        if (Function.Call<bool>(Hash.IS_ENTITY_A_MISSION_ENTITY, cop.Handle)) continue;
 
                         int copH = cop.Handle;
 
@@ -210,6 +214,39 @@ namespace StreetRiders
                 
                 // >>> All wheelie logic (raycast, pitch, force) is in Physics/WheeliePhysics.cs <<<
                 TickWheelie(bike, state, speed, pitch, cfg);
+
+                // Update WheelieProtected on phase transitions (used for config selection + ped flag)
+                {
+                    bool wasWheeling = oldPhase != Phase.Idle;
+                    bool isWheeling  = state.Phase != Phase.Idle;
+                    if (!wasWheeling && isWheeling)
+                    {
+                        if (_preventFallMode == PreventFallMode.Always)
+                        {
+                            state.WheelieProtected = true;
+                            // Ped flag already set permanently by ApplyPedFlags
+                        }
+                        else if (_preventFallMode == PreventFallMode.WheelieOnly)
+                        {
+                            state.WheelieProtected = _rnd.Next(100) < _preventFallChance;
+                            if (state.WheelieProtected)
+                                Function.Call(Hash.SET_PED_CAN_BE_KNOCKED_OFF_VEHICLE, ped.Handle, 1);
+                        }
+                        else
+                        {
+                            state.WheelieProtected = false;
+                        }
+                    }
+                    else if (wasWheeling && !isWheeling)
+                    {
+                        if (state.WheelieProtected)
+                        {
+                            if (_preventFallMode == PreventFallMode.WheelieOnly)
+                                Function.Call(Hash.SET_PED_CAN_BE_KNOCKED_OFF_VEHICLE, ped.Handle, 0);
+                            state.WheelieProtected = false;
+                        }
+                    }
+                }
                 /*
                 // ==================================================================================
                 // LOGIQUE CONTINUE PENDANT LE WHEELIE
@@ -265,6 +302,29 @@ namespace StreetRiders
                     RetaskRiderToGroup(ped, state);
                 }*/
 
+                // Re-issue driving task when TASK_PLAY_ANIM ends during Sustained.
+                // Flag-0 animations replace the primary driving task; once the clip ends
+                // the ped has no task left and coasts straight for the rest of the phase.
+                if (state.Phase == Phase.Sustained
+                    && state.WheelieNeedsRetask
+                    && !string.IsNullOrEmpty(state.LastWheelieAnimDict)
+                    && !string.IsNullOrEmpty(state.LastWheelieAnimClip)
+                    && Game.GameTime - state.WheelieAnimStartTime >= 500
+                    && !Function.Call<bool>(Hash.IS_ENTITY_PLAYING_ANIM,
+                        ped.Handle, state.LastWheelieAnimDict, state.LastWheelieAnimClip, 3))
+                {
+                    RetaskRiderToGroup(ped, state);
+                    state.WheelieNeedsRetask = false;
+                    int nextCooldown = state.WheelieAnimUpperBodyOnly ? 2000 : cfg.StuntCooldown;
+                    state.WheelieAnimUpperBodyOnly = false;
+                    state.WheelieAnimPlayed = false;
+                    state.WheelieAnimTriggerTime = Game.GameTime + nextCooldown;
+                }
+                else if (oldPhase != Phase.Idle && state.Phase == Phase.Idle)
+                {
+                    RetaskRiderToGroup(ped, state);
+                }
+
                 state.LastPitch = pitch;
                 state.LastSpeed = speed;
 
@@ -277,7 +337,12 @@ namespace StreetRiders
                     Color col;
                     string detail;
                     // Prioritize brake reason when set (contains pitch info)
-                    if (!string.IsNullOrEmpty(_wheelieSkipReason) && _wheelieSkipReason.StartsWith("BRAKE"))
+                    if (state.WheelieNeedsRetask)
+                    {
+                        col = Color.Cyan;
+                        detail = "★STUNT";
+                    }
+                    else if (!string.IsNullOrEmpty(_wheelieSkipReason) && _wheelieSkipReason.StartsWith("BRAKE"))
                     {
                         col = Color.Red;
                         detail = _wheelieSkipReason;
@@ -298,9 +363,20 @@ namespace StreetRiders
                         detail = "";
                     }
 
-                    DrawDebugText(ped,
-                        $"[{tag}:{state.BikeModel}] {state.Phase} {state.AttemptsDone}/{state.AttemptsTarget} | P:{absPitch:F1} Spd:{speed:F0} {detail}",
-                        col);
+                    bool pfActive = _preventFallMode == PreventFallMode.Always
+                        || (_preventFallMode == PreventFallMode.WheelieOnly && state.WheelieProtected);
+                    string pfTag = _preventFallMode == PreventFallMode.Disabled ? "" :
+                                   pfActive ? "PreventFall:ON" : "PreventFall:OFF";
+
+                    string line1 = $"[{tag}:{state.BikeModel}]  {state.Phase} {state.AttemptsDone}/{state.AttemptsTarget}";
+                    string line2 = $"Pitch:{absPitch:F1}  Speed:{speed:F0}";
+                    string line3 = (pfTag + "  " + detail).Trim();
+
+                    string hudText = string.IsNullOrEmpty(line3)
+                        ? $"{line1}\n{line2}"
+                        : $"{line1}\n{line2}\n{line3}";
+
+                    DrawDebugText(ped, hudText, col);
                 }
             }
         }
@@ -534,10 +610,12 @@ namespace StreetRiders
                         else
                         {
                             Vehicle lb = (Vehicle)Entity.FromHandle(targetGroup.LeaderBikeHandle);
-                            Entity target = (lb != null && lb.Exists()) ? (Entity)lb : (Entity)playerVeh;
+                            bool hasLeader = lb != null && lb.Exists();
+                            Entity target = hasLeader ? (Entity)lb : (Entity)playerVeh;
+                            int dist = hasLeader ? _formationDistance : _followMinDistance;
                             Function.Call((Hash)0xFC545A9F0626E3B6, // TASK_VEHICLE_FOLLOW
                                 ped.Handle, bike.Handle, target.Handle,
-                                cfg.DriveSpeed, cfg.DrivingFlags, _followMinDistance);
+                                cfg.DriveSpeed, cfg.DrivingFlags, dist);
                         }
                         Function.Call(Hash.SET_ENTITY_MAX_SPEED, bike.Handle, cfg.MaxSpeed);
                         return;
@@ -562,7 +640,7 @@ namespace StreetRiders
                     // Autonomous: followers also use TASK_VEHICLE_FOLLOW on leader
                     Function.Call((Hash)0xFC545A9F0626E3B6, // TASK_VEHICLE_FOLLOW
                         ped.Handle, bike.Handle, leaderBike.Handle,
-                        cfg.DriveSpeed, cfg.DrivingFlags, _followMinDistance);
+                        cfg.DriveSpeed, cfg.DrivingFlags, _formationDistance);
                 }
                 else
                 {

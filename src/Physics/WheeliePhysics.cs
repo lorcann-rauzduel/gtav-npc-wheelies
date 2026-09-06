@@ -1,4 +1,5 @@
 using System;
+using System.Drawing;
 using GTA;
 using GTA.Native;
 using GTA.Math;
@@ -84,25 +85,12 @@ namespace StreetRiders
                 ? (IntersectFlags)(1 | 2 | 4 | 8)  // Map + Vehicles + Peds
                 : IntersectFlags.Map;               // Map only
 
-            var ray = World.Raycast(bike.Position, flatForward,
-                cfg.RaycastDist, rayFlags, bike);
-
-            if (ray.DidHit)
+            if (IsObstacleAhead(bike, state, flatForward, cfg.RaycastDist, rayFlags))
             {
-                // Ignore the rider himself (false positive from ped flags)
-                if (ray.HitEntity != null && ray.HitEntity.Handle == state.PedHandle)
-                {
-                    // Not a real obstacle, skip
-                }
-                else
-                {
-                    if (state.Phase != Phase.Idle)
-                    {
-                        CancelWheelie(state, now, 600);
-                    }
-                    _wheelieSkipReason = "OBSTACLE";
-                    return;
-                }
+                if (state.Phase != Phase.Idle)
+                    CancelWheelie(state, now, 600);
+                _wheelieSkipReason = "OBSTACLE";
+                return;
             }
             // =================================================================
             //  IDLE
@@ -132,6 +120,8 @@ namespace StreetRiders
                     state.PhaseEnd = now + _rnd.Next(cfg.SustainDurMin, cfg.SustainDurMax + 1);
                     state.AttemptsTarget = 0;
                     state.AttemptsDone = 0;
+                    state.WheelieAnimTriggerTime = now + _rnd.Next(300, 800);
+                    state.WheelieAnimPlayed = false;
                 }
 
                 state.NextBoostTime = 0;
@@ -146,11 +136,53 @@ namespace StreetRiders
             {
                 if (now > state.PhaseEnd)
                 {
+                    StopWheelieAnimWithBlend(state);
                     state.Phase = Phase.Idle;
                     state.AttemptsDone++;
                     state.NextAttemptDelay = now + _rnd.Next(cfg.DelayMin, cfg.DelayMax + 1);
+                    state.WheelieAnimPlayed = false;
+                    state.WheelieAnimTriggerTime = 0;
+                    state.WheelieHoldingSince = 0;
                     _wheelieSkipReason = "DONE";
                     return;
+                }
+
+                // Promote Attempting → Sustained when pitch is held above threshold for 2s.
+                // The time-based cycle only reaches Sustained after X bursts complete,
+                // but a rider can physically hold the wheel up throughout an entire Attempting
+                // burst. This bridges the gap between physics state and the phase label.
+                if (state.Phase == Phase.Attempting)
+                {
+                    const int PromoteAfterMs = 2000;
+                    float holdThreshold = cfg.TargetPitch * 0.6f;
+
+                    if (pitch >= holdThreshold)
+                    {
+                        if (state.WheelieHoldingSince == 0)
+                            state.WheelieHoldingSince = now;
+                        else if (now - state.WheelieHoldingSince >= PromoteAfterMs)
+                        {
+                            state.Phase = Phase.Sustained;
+                            state.PhaseEnd = now + _rnd.Next(cfg.SustainDurMin, cfg.SustainDurMax + 1);
+                            state.AttemptsTarget = 0;
+                            state.AttemptsDone = 0;
+                            state.WheelieAnimTriggerTime = now + _rnd.Next(300, 800);
+                            state.WheelieAnimPlayed = false;
+                            state.WheelieHoldingSince = 0;
+                        }
+                    }
+                    else
+                    {
+                        state.WheelieHoldingSince = 0;
+                    }
+                }
+
+                if (state.Phase == Phase.Sustained
+                    && !state.WheelieAnimPlayed
+                    && state.WheelieAnimTriggerTime > 0
+                    && now >= state.WheelieAnimTriggerTime)
+                {
+                    TryPlayWheelieAnim(state, cfg);
                 }
 
                 // --- Angular velocity (positive = bike rotating upward) ---
@@ -196,6 +228,12 @@ namespace StreetRiders
                     pitchMult = 0f; // Correction handled below
                 }
 
+                if (!IsRearWheelGrounded(bike))
+                {
+                    _wheelieSkipReason = "AIRBORNE";
+                    return;
+                }
+
                 if (pitchMult > 0.01f)
                 {
                     float force = cfg.LiftForce * pitchMult * ForceScale;
@@ -239,8 +277,119 @@ namespace StreetRiders
         {
             if (state.Phase == Phase.Attempting)
                 state.AttemptsDone++;
+            StopWheelieAnimWithBlend(state);
             state.Phase = Phase.Idle;
             state.NextAttemptDelay = now + delayMs;
+            state.WheelieAnimPlayed = false;
+            state.WheelieAnimTriggerTime = 0;
+            state.WheelieHoldingSince = 0;
+            state.WheelieNeedsRetask = false;
+        }
+
+        private static void StopWheelieAnimWithBlend(RiderState state)
+        {
+            if (!state.WheelieAnimPlayed
+                || string.IsNullOrEmpty(state.LastWheelieAnimDict)
+                || string.IsNullOrEmpty(state.LastWheelieAnimClip)) return;
+
+            var ped = (Ped)Entity.FromHandle(state.PedHandle);
+            if (ped == null || !ped.Exists()) return;
+
+            Function.Call(Hash.STOP_ANIM_TASK, ped.Handle, state.LastWheelieAnimDict, state.LastWheelieAnimClip, 4f);
+        }
+
+        private void TryPlayWheelieAnim(RiderState state, WheelieConfig cfg)
+        {
+            if (!state.DoWheelieStunts) return;
+
+            var anims = cfg.StuntAnims;
+            if (anims == null || anims.Count == 0) return;
+
+            var ped = (Ped)Entity.FromHandle(state.PedHandle);
+            if (ped == null || !ped.Exists() || ped.IsDead) return;
+
+            PointF screenPos = GTA.UI.Screen.WorldToScreen(ped.Position + new Vector3(0, 0, 1f));
+            if (screenPos.X == 0 && screenPos.Y == 0) return;
+
+            // Pick a random entry, excluding the last played key (no-repeat)
+            string lastKey = (state.LastWheelieAnimDict ?? "") + ":" + (state.LastWheelieAnimClip ?? "");
+            int excludeIdx = -1;
+            for (int i = 0; i < anims.Count; i++)
+                if (anims[i].Key == lastKey) { excludeIdx = i; break; }
+
+            int chosen;
+            if (anims.Count > 1 && excludeIdx >= 0)
+            {
+                chosen = _rnd.Next(anims.Count - 1);
+                if (chosen >= excludeIdx) chosen++;
+            }
+            else
+            {
+                chosen = _rnd.Next(anims.Count);
+            }
+
+            WheelieAnimEntry entry = anims[chosen];
+
+            if (!Function.Call<bool>(Hash.HAS_ANIM_DICT_LOADED, entry.Dict))
+            {
+                Function.Call(Hash.REQUEST_ANIM_DICT, entry.Dict);
+                return;
+            }
+
+            int animFlag = _rnd.Next(100) < 25 ? 16 : 0;
+
+            Function.Call(Hash.TASK_PLAY_ANIM,
+                ped.Handle, entry.Dict, entry.Clip,
+                8f, -8f, -1, animFlag, 0f, false, false, false);
+
+            state.LastWheelieAnimDict = entry.Dict;
+            state.LastWheelieAnimClip = entry.Clip;
+            state.WheelieAnimPlayed = true;
+            state.WheelieNeedsRetask = true;
+            state.WheelieAnimUpperBodyOnly = (animFlag == 16);
+            state.WheelieAnimStartTime = Game.GameTime;
+        }
+
+        // In Sustained, the front wheel is off the ground continuously, preventing effective steering.
+        // A single forward raycast misses vehicles on road curves. We use a 3-ray fan (center + ±20°)
+        // with shorter side rays (vehicles only) to detect lateral threats without false-positiving
+        // on road barriers and guardrails.
+        private static bool IsObstacleAhead(Vehicle bike, RiderState state, Vector3 forward, float dist, IntersectFlags flags)
+        {
+            var center = World.Raycast(bike.Position, forward, dist, flags, bike);
+            if (center.DidHit && !IsIgnorableRaycastHit(center.HitEntity, state)) return true;
+
+            if (state.Phase != Phase.Sustained) return false;
+
+            // Side raycasts: vehicles only (no map/objects) to avoid false positives from road geometry
+            const IntersectFlags VehiclesAndPeds = (IntersectFlags)(2 | 4);
+            float sideDist = dist * 0.65f;
+
+            var left = World.Raycast(bike.Position, RotateDirection(forward, -20f), sideDist, VehiclesAndPeds, bike);
+            if (left.DidHit && !IsIgnorableRaycastHit(left.HitEntity, state)) return true;
+
+            var right = World.Raycast(bike.Position, RotateDirection(forward, 20f), sideDist, VehiclesAndPeds, bike);
+            if (right.DidHit && !IsIgnorableRaycastHit(right.HitEntity, state)) return true;
+
+            return false;
+        }
+
+        private static bool IsIgnorableRaycastHit(Entity hitEntity, RiderState state)
+        {
+            if (hitEntity == null) return false;
+            if (hitEntity.Handle == state.PedHandle) return true;
+            // Other riders traveling in vehicles (group members slightly ahead) are not real obstacles
+            if (hitEntity is Ped p && p.IsInVehicle()) return true;
+            return false;
+        }
+
+        // Rotates a flat (XY) direction vector clockwise by angleDeg (positive = right, negative = left)
+        private static Vector3 RotateDirection(Vector3 dir, float angleDeg)
+        {
+            float rad = angleDeg * (float)Math.PI / 180f;
+            float cos = (float)Math.Cos(rad);
+            float sin = (float)Math.Sin(rad);
+            return new Vector3(dir.X * cos + dir.Y * sin, -dir.X * sin + dir.Y * cos, 0f);
         }
 
         private static float Clamp01(float v)
@@ -248,6 +397,17 @@ namespace StreetRiders
             if (v < 0f) return 0f;
             if (v > 1f) return 1f;
             return v;
+        }
+
+        private static bool IsRearWheelGrounded(Vehicle bike)
+        {
+            const float RayDist = 0.6f;
+            EntityBone rearWheelBone = bike.Bones["wheel_lr"];
+            Vector3 origin = rearWheelBone.IsValid ? rearWheelBone.Position : bike.Position;
+
+            // Bike bouncing off a bump momentarily lifts both wheels — block lift force in that case
+            RaycastResult hit = World.Raycast(origin, new Vector3(0f, 0f, -1f), RayDist, IntersectFlags.Map, bike);
+            return hit.DidHit;
         }
     }
 }

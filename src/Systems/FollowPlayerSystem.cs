@@ -408,9 +408,9 @@ namespace StreetRiders
                                     WheelieConfig cfg = GetWheelieConfig(st?.BikeModel ?? "");
 
                                     // On réassigne TASK_VEHICLE_FOLLOW pour qu'il se cale à la vitesse du groupe
-                                    Function.Call((Hash)0xFC545A9F0626E3B6, 
+                                    Function.Call((Hash)0xFC545A9F0626E3B6,
                                         rp.Handle, rp.CurrentVehicle.Handle, grpLeaderBike.Handle,
-                                        cfg.DriveSpeed, cfg.DrivingFlags, _followMinDistance);
+                                        cfg.DriveSpeed, cfg.DrivingFlags, _formationDistance);
                                 }
                             }
                         }
@@ -776,7 +776,7 @@ namespace StreetRiders
                     {
                         Function.Call((Hash)0xFC545A9F0626E3B6, // TASK_VEHICLE_FOLLOW
                             ped.Handle, bike.Handle, lb.Handle,
-                            cfg.DriveSpeed, cfg.DrivingFlags, _followMinDistance);
+                            cfg.DriveSpeed, cfg.DrivingFlags, _formationDistance);
                     }
                 }
                 Function.Call(Hash.SET_ENTITY_MAX_SPEED, bike.Handle, cfg.MaxSpeed);

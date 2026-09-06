@@ -23,6 +23,7 @@ namespace StreetRiders
             public int GroupId = -1;
             public bool IsSpawned;
             public bool DoWheelie = true;
+        public bool DoWheelieStunts = true;
             public float LastForceApplied;
             public bool InIdleScenario;       // true = managed by WaitingForPlayer, skip remount
             public bool ScenarioPlaying;      // true = actively playing a WORLD_HUMAN scenario
@@ -36,6 +37,16 @@ namespace StreetRiders
             public int LastTalkTime;
             public int BlipHandle;         // Minimap blip handle (0 = none)
             public int LastMovingTime;     // Last GameTime when bike.Speed > 2 (idle-on-bike detection)
+
+        public bool WheelieAnimPlayed;
+        public bool WheelieProtected; // true = fall prevention active for this wheelie (WheelieOnly chance roll)
+        public int WheelieAnimTriggerTime;
+        public int WheelieHoldingSince; // GameTime when pitch first crossed the hold threshold
+        public string LastWheelieAnimDict;
+        public string LastWheelieAnimClip;
+        public bool WheelieNeedsRetask;
+        public int WheelieAnimStartTime;
+        public bool WheelieAnimUpperBodyOnly;
         }
     }
 }

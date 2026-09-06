@@ -43,12 +43,12 @@ namespace StreetRiders
                     {
                         // Rider dead/gone: release cops that were pursuing
                         if (ped != null && ped.Exists())
-                            ReleasePursuingCops(ped.Position);
+                            ReleasePursuingCops(ped.Handle);
                         remove = true;
                     }
                     else if (ped.Position.DistanceTo(playerPos) > _cleanupDist)
                     {
-                        ReleasePursuingCops(ped.Position);
+                        ReleasePursuingCops(ped.Handle);
                         remove = true;
                         DeletePedAndBike(ped);
                     }
@@ -58,7 +58,7 @@ namespace StreetRiders
                         if (v != null && (v.IsDead || v.IsInWater))
                         {
                             // Bike destroyed or in water: release naturally
-                            ReleasePursuingCops(ped.Position);
+                            ReleasePursuingCops(ped.Handle);
                             ped.Task.LeaveVehicle();
                             ped.Task.Wander();
                             Function.Call(Hash.SET_BLOCKING_OF_NON_TEMPORARY_EVENTS, ped.Handle, false);
@@ -139,9 +139,25 @@ namespace StreetRiders
 
                     if (needNewLeader)
                     {
-                        if (_debug)
-                            Notification.PostTicker($"~o~Riders: {group.ConfigName} leader lost, promoting...", true);
-                        PromoteNewLeader(group);
+                        if (group.LeaderLostTime == 0)
+                        {
+                            // First tick the leader looks invalid — start the grace timer
+                            group.LeaderLostTime = Game.GameTime;
+                        }
+                        else if (Game.GameTime - group.LeaderLostTime >= _leaderGracePeriodMs)
+                        {
+                            // Leader has been invalid for long enough — actually promote
+                            group.LeaderLostTime = 0;
+                            if (_debug)
+                                Notification.PostTicker($"~o~Riders: {group.ConfigName} leader lost, promoting...", true);
+                            PromoteNewLeader(group);
+                        }
+                        // else: still within grace period, keep the current leader handle
+                    }
+                    else
+                    {
+                        // Leader recovered — reset the timer
+                        group.LeaderLostTime = 0;
                     }
                 }
             }
@@ -197,7 +213,7 @@ namespace StreetRiders
 
                 Function.Call((Hash)0xFC545A9F0626E3B6, // TASK_VEHICLE_FOLLOW
                     f.Handle, fb.Handle, newBike.Handle,
-                    fc.DriveSpeed, fc.DrivingFlags, _followMinDistance);
+                    fc.DriveSpeed, fc.DrivingFlags, _formationDistance);
             }
 
             if (_debug)
@@ -275,7 +291,7 @@ namespace StreetRiders
                     if (lb != null && lb.Exists())
                         Function.Call((Hash)0xFC545A9F0626E3B6, // TASK_VEHICLE_FOLLOW
                             ped.Handle, bike.Handle, lb.Handle,
-                            cfg.DriveSpeed, cfg.DrivingFlags, _followMinDistance);
+                            cfg.DriveSpeed, cfg.DrivingFlags, _formationDistance);
                 }
                 Function.Call(Hash.SET_ENTITY_MAX_SPEED, bike.Handle, cfg.MaxSpeed);
             }
@@ -286,21 +302,29 @@ namespace StreetRiders
         // =========================================================================
 
         /// <summary>
-        /// Finds nearby cops that were chasing a rider at the given position and
-        /// resets them: clears their task, turns off sirens, and lets them return
-        /// to normal ambient behavior.
-        /// Called whenever a rider is removed from tracking (dead, cleaned up, etc.)
+        /// Releases the cops Riders itself assigned to chase the given rider, and only
+        /// those. The old version swept every cop ped within 120 m and cleared his task
+        /// + unblocked his non-temporal events even when Riders had never tasked him —
+        /// which broke the scripted role another mod (e.g. a scripted arrest transport
+        /// driver sitting in a locked hold) had given him. Cops are only ever reset when
+        /// CopPursuitInfo proves WE assigned this exact rider to them.
         /// </summary>
-        private void ReleasePursuingCops(Vector3 riderPosition)
+        private void ReleasePursuingCops(int riderHandle)
         {
-            Ped[] nearby = World.GetNearbyPeds(riderPosition, 120.0f);
-            foreach (Ped cop in nearby)
+            // Snapshot before mutating the dict while iterating it
+            List<int> pursuing = new List<int>();
+            foreach (var kv in _copPursuits)
             {
-                if (cop == null || !cop.Exists() || !cop.IsAlive) continue;
-                if (Function.Call<int>(Hash.GET_PED_TYPE, cop.Handle) != 6) continue; // Not a cop
+                if (kv.Value.TargetRiderHandle == riderHandle)
+                    pursuing.Add(kv.Key);
+            }
 
-                // Remove from pursuit tracking
-                _copPursuits.Remove(cop.Handle);
+            foreach (int copH in pursuing)
+            {
+                _copPursuits.Remove(copH);
+
+                Ped cop = (Ped)Entity.FromHandle(copH);
+                if (cop == null || !cop.Exists() || !cop.IsAlive) continue;
 
                 // Clear pursuit task so the cop doesn't stay stuck
                 Function.Call(Hash.CLEAR_PED_TASKS, cop.Handle);
