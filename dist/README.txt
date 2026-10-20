@@ -1,5 +1,5 @@
 ===============================================================================
-  Street Riders v2.0.0 - Realistic NPC Wheelies
+  Street Riders v2.0.1 - Realistic NPC Wheelies
   for Grand Theft Auto V
 ===============================================================================
 
@@ -41,7 +41,7 @@ per-bike tuning.
   1. Install ScriptHookV and ScriptHookVDotNet3 in your GTA V root folder.
   2. Copy StreetRiders.dll into Grand Theft Auto V/scripts/
   3. Copy the entire StreetRiders/ folder into Grand Theft Auto V/scripts/
-  4. Launch the game. You should see: "Street Riders v2.0.0: Loaded!"
+  4. Launch the game. You should see: "Street Riders v2.0.1: Loaded!"
 
   Folder structure:
 

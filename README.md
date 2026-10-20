@@ -1,4 +1,4 @@
-# Street Riders v2.0.0 — Realistic NPC Wheelies
+# Street Riders v2.0.1 — Realistic NPC Wheelies
 
 A GTA V mod that spawns motorcycle gangs who cruise their turf and pull realistic wheelies. Physics-based system with stunt animations, fall prevention tuning, and full per-bike configuration.
 
@@ -36,7 +36,7 @@ A GTA V mod that spawns motorcycle gangs who cruise their turf and pull realisti
 1. Install ScriptHookV and ScriptHookVDotNet3 in your GTA V root folder.
 2. Copy `StreetRiders.dll` into `Grand Theft Auto V/scripts/`.
 3. Copy the entire `StreetRiders/` folder into `Grand Theft Auto V/scripts/`.
-4. Launch the game — you should see: *"Street Riders v2.0.0: Loaded!"*
+4. Launch the game — you should see: *"Street Riders v2.0.1: Loaded!"*
 
 ```
 Grand Theft Auto V/
