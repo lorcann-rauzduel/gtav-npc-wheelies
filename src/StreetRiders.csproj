@@ -7,9 +7,10 @@
     <AssemblyName>StreetRiders</AssemblyName>
     <RootNamespace>StreetRiders</RootNamespace>
     <Version>2.0.1</Version>
-    
-    <OutputPath>D:\SteamLibrary\steamapps\common\Grand Theft Auto V\scripts\</OutputPath>
-    
+
+    <!-- Your GTA V folder. Override it for your install: dotnet build /p:GTAPath="D:\Games\Grand Theft Auto V" -->
+    <GTAPath Condition="'$(GTAPath)' == ''">C:\Program Files (x86)\Steam\steamapps\common\Grand Theft Auto V</GTAPath>
+    <OutputPath>$(GTAPath)\scripts\</OutputPath>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
   </PropertyGroup>
 
@@ -22,11 +23,11 @@
 
   <ItemGroup>
     <Reference Include="ScriptHookVDotNet3">
-      <HintPath>D:\SteamLibrary\steamapps\common\Grand Theft Auto V\ScriptHookVDotNet3.dll</HintPath>
+      <HintPath>$(GTAPath)\ScriptHookVDotNet3.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="ScriptHookV">
-      <HintPath>D:\SteamLibrary\steamapps\common\Grand Theft Auto V\ScriptHookV.dll</HintPath>
+      <HintPath>$(GTAPath)\ScriptHookV.dll</HintPath>
       <Private>False</Private>
     </Reference>
 

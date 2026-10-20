@@ -23,12 +23,19 @@
 
 ## Build
 
+Requires the .NET SDK and a GTA V install with ScriptHookV and ScriptHookVDotNet 3.
+
 ```bash
-# Requires .NET SDK and reference to GTA.Native.dll, GTA.UI.dll
-dotnet build
+dotnet build src/StreetRiders.csproj -c Release
 ```
 
-Output: `bin/Debug/StreetRiders.dll` → copy to `GTA V/scripts/`
+The project looks for GTA V in the default Steam folder. If yours is elsewhere, pass its path:
+
+```bash
+dotnet build src/StreetRiders.csproj -c Release /p:GTAPath="D:\Games\Grand Theft Auto V"
+```
+
+The DLL is written to your GTA V `scripts/` folder and copied to `dist/scripts/`.
 
 ## License
 
