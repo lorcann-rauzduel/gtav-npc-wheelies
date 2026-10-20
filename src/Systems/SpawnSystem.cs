@@ -341,6 +341,9 @@ namespace StreetRiders
                 bool zoneOk = gc.Zones.Count == 0 || gc.Zones.Contains(playerZone);
                 if (!zoneOk) continue;
 
+                // A group currently mustered at a meeting venue must not spawn elsewhere.
+                if (IsGroupOnActiveMeeting(gc.Name)) continue;
+
                 // Hours: bypassed in TestMode, enforced otherwise
                 bool hourOk = _testMode || IsActiveHour(currentHour, gc.ActiveHourStart, gc.ActiveHourEnd);
 

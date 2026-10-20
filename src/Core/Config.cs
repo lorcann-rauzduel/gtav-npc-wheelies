@@ -21,12 +21,17 @@ namespace StreetRiders
             string section, string key, string defaultValue,
             StringBuilder retVal, int size, string filePath);
 
+        [DllImport("kernel32", CharSet = CharSet.Unicode)]
+        private static extern bool WritePrivateProfileString(
+            string section, string key, string value, string filePath);
+
         // ===== Constants =====
         private static readonly string INI_PATH = "scripts\\StreetRiders\\config.ini";
         private static readonly string GROUPS_INI_PATH = "scripts\\StreetRiders\\groups.ini";
         private static readonly string VEHICLES_INI_PATH = "scripts\\StreetRiders\\vehicles.ini";
         private static readonly string BEHAVIOR_INI_PATH = "scripts\\StreetRiders\\behavior.ini";
         private static readonly string ADVANCED_INI_PATH = "scripts\\StreetRiders\\advanced.ini";
+        private static readonly string MEETINGS_INI_PATH = "scripts\\StreetRiders\\meetings.ini";
         private const int LOGIC_INTERVAL_MS = 1500;
 
         // ===== General Config =====
@@ -87,6 +92,28 @@ namespace StreetRiders
         // ===== Bodyguard =====
         private bool _bodyguardEnabled;
         private float _bodyguardRadius;
+
+        // ===== Meetings =====
+        private bool _langEn;
+        private bool _meetingEnabled;
+        private Keys _meetingMenuKey;
+        private HashSet<int> _meetingScheduleDays;
+        private int _meetingStartHour;
+        private int _meetingEndHour;
+        private float _meetingMaterializeDist;
+        private int _meetingMaxConcurrent;
+        private int _meetingRidersMin;
+        private int _meetingRidersMax;
+        private int _meetingRoleChangeMinMs;
+        private int _meetingRoleChangeMaxMs;
+        private float _meetingFreestyleRadiusMin;
+        private float _meetingFreestyleRadius;
+        private int _meetingFreestyleMinMs;
+        private int _meetingFreestyleMaxMs;
+        private bool _meetingDepartureFormation;
+        private List<MeetingVenue> _meetingVenues;
+        private int _meetingLastUpdate;
+        private int _meetingNextSchedulerCheck;
 
         // ===== Wheelie Configs =====
         private WheelieConfig _defaultWheelie;
@@ -201,6 +228,37 @@ namespace StreetRiders
             return defaultValue;
         }
 
+        private List<string> GetIniSections(string file)
+        {
+            // Pass a null section to enumerate every section of the INI file.
+            var sb = new StringBuilder(8192);
+            GetPrivateProfileString(null, null, "", sb, 8192, file);
+            var sections = new List<string>();
+            if (sb.Length == 0) return sections;
+            foreach (string s in sb.ToString().Split('\0'))
+            {
+                if (s.Length > 0) sections.Add(s);
+            }
+            return sections;
+        }
+
+        private void WriteIniValue(string file, string section, string key, string value)
+        {
+            WritePrivateProfileString(section, key, value, file);
+        }
+
+        private void DeleteIniSection(string file, string section)
+        {
+            // Null key = delete the whole section.
+            WritePrivateProfileString(section, null, null, file);
+        }
+
+        private void DeleteIniValue(string file, string section, string key)
+        {
+            // Null value = delete the single key.
+            WritePrivateProfileString(section, key, null, file);
+        }
+
         // =========================================================================
         //  Config Loading
         // =========================================================================
@@ -220,6 +278,7 @@ namespace StreetRiders
             _debugShowOverhead = GetIniBool(fullPath, "General", "ShowOverhead", false);
             _debugKey = ParseKey(GetIniString(fullPath, "General", "DebugKey", "Insert"));
             _reloadKey = ParseKey(GetIniString(fullPath, "General", "ReloadKey", "F10"));
+            _langEn = GetIniString(fullPath, "General", "Language", "fr").Equals("en", StringComparison.OrdinalIgnoreCase);
             _maxGroups = GetIniInt(fullPath, "General", "MaxActiveGroups", 3);
             _ridersMin = GetIniInt(fullPath, "General", "RidersPerGroupMin", 2);
             _ridersMax = GetIniInt(fullPath, "General", "RidersPerGroupMax", 5);
@@ -278,7 +337,7 @@ namespace StreetRiders
             else
                 _dismountBehavior = DismountBehavior.Wait;
             _idleScenarios = ParseCsv(GetIniString(behaviorPath, "FollowPlayer", "IdleScenarios",
-                "WORLD_HUMAN_SMOKING, WORLD_HUMAN_STAND_MOBILE, WORLD_HUMAN_LEANING"));
+                "WORLD_HUMAN_SMOKING, WORLD_HUMAN_STAND_MOBILE, WORLD_HUMAN_DRINKING, WORLD_HUMAN_LEANING"));
             _idleDelayMs = GetIniInt(behaviorPath, "FollowPlayer", "IdleDelayMs", 5000);
             _resumeDelayMs = GetIniInt(behaviorPath, "FollowPlayer", "ResumeDelayMs", 2000);
             _idleScenarioDist = GetIniFloat(behaviorPath, "FollowPlayer", "IdleScenarioDistance", 8.0f);
@@ -392,6 +451,27 @@ namespace StreetRiders
                     BlipName = "Default"
                 });
             }
+
+            // ===== Meetings (meetings.ini) =====
+            string meetingsPath = System.IO.Path.GetFullPath(MEETINGS_INI_PATH);
+            _meetingEnabled = GetIniBool(meetingsPath, "Meetings", "Enabled", true);
+            _meetingMenuKey = ParseKey(GetIniString(meetingsPath, "Meetings", "MenuKey", "F8"));
+            _meetingScheduleDays = new HashSet<int>(ParseIntCsv(GetIniString(meetingsPath, "Meetings", "ScheduleDays", "5,0")));
+            _meetingStartHour = GetIniInt(meetingsPath, "Meetings", "StartHour", 18);
+            _meetingEndHour = GetIniInt(meetingsPath, "Meetings", "EndHour", 2);
+            _meetingMaterializeDist = GetIniFloat(meetingsPath, "Meetings", "MaterializeDistance", 400.0f);
+            _meetingMaxConcurrent = Math.Max(1, GetIniInt(meetingsPath, "Meetings", "MaxConcurrentVenues", 1));
+            _meetingRidersMin = Math.Max(2, GetIniInt(meetingsPath, "Meetings", "RidersMin", 6));
+            _meetingRidersMax = Math.Max(_meetingRidersMin, GetIniInt(meetingsPath, "Meetings", "RidersMax", 10));
+            _meetingRoleChangeMinMs = GetIniInt(meetingsPath, "Meetings", "RoleChangeMinMs", 15000);
+            _meetingRoleChangeMaxMs = Math.Max(_meetingRoleChangeMinMs, GetIniInt(meetingsPath, "Meetings", "RoleChangeMaxMs", 30000));
+            _meetingFreestyleRadius = Math.Max(40f, GetIniFloat(meetingsPath, "Meetings", "FreestyleRadius", 80f));
+            _meetingFreestyleRadiusMin = Math.Max(15f, GetIniFloat(meetingsPath, "Meetings", "FreestyleRadiusMin", 40f));
+            if (_meetingFreestyleRadiusMin > _meetingFreestyleRadius) _meetingFreestyleRadiusMin = _meetingFreestyleRadius;
+            _meetingFreestyleMinMs = GetIniInt(meetingsPath, "Meetings", "FreestyleBurstMinMs", 15000);
+            _meetingFreestyleMaxMs = Math.Max(_meetingFreestyleMinMs, GetIniInt(meetingsPath, "Meetings", "FreestyleBurstMaxMs", 30000));
+            _meetingDepartureFormation = GetIniBool(meetingsPath, "Meetings", "DepartureFormation", true);
+            LoadMeetingVenues(meetingsPath);
         }
 
         private WheelieConfig ReadDefaultWheelieConfig(string vehiclesPath, string behaviorPath, string advancedPath)
@@ -594,6 +674,77 @@ namespace StreetRiders
             foreach (var gc in _groupConfigs)
                 if (gc.Name == configName) return gc;
             return null;
+        }
+
+        // =========================================================================
+        //  Meetings: venue parsing / serialization (meetings.ini)
+        // =========================================================================
+
+        private void LoadMeetingVenues(string meetingsPath)
+        {
+            _meetingVenues = new List<MeetingVenue>();
+            if (string.IsNullOrEmpty(meetingsPath) || !System.IO.File.Exists(meetingsPath)) return;
+
+            foreach (string section in GetIniSections(meetingsPath))
+            {
+                if (!section.StartsWith("Venue_", StringComparison.OrdinalIgnoreCase)) continue;
+                var venue = new MeetingVenue
+                {
+                    Name = section.Substring(6),
+                    GroupName = GetIniString(meetingsPath, section, "Group", "")
+                };
+                for (int i = 1; i <= 24; i++)
+                {
+                    if (ParseVenuePosition(GetIniString(meetingsPath, section, "ParkingPoint" + i, ""),
+                        out Vector3 pp, out float ph))
+                        venue.ParkingPoints.Add(new MeetingPoint { Position = pp, Heading = ph });
+                    else
+                        break;
+                }
+                for (int i = 1; i <= 8; i++)
+                {
+                    if (ParseVenuePosition(GetIniString(meetingsPath, section, "CirclePoint" + i, ""),
+                        out Vector3 cp, out float ch))
+                        venue.CirclePoints.Add(new MeetingPoint { Position = cp, Heading = ch });
+                    else
+                        break;
+                }
+                // Rétro-compatibilité : l'ancien schéma à point unique devient le premier point de parking.
+                if (venue.ParkingPoints.Count == 0
+                    && ParseVenuePosition(GetIniString(meetingsPath, section, "Position", ""),
+                        out Vector3 position, out float heading))
+                    venue.ParkingPoints.Add(new MeetingPoint { Position = position, Heading = heading });
+
+                if (venue.ParkingPoints.Count == 0) continue; // un lieu sans parking n'est pas exploitable
+                _meetingVenues.Add(venue);
+            }
+        }
+
+        public static string SerializeVenuePosition(Vector3 position, float heading)
+        {
+            var culture = System.Globalization.CultureInfo.InvariantCulture;
+            return position.X.ToString("0.####", culture) + ","
+                + position.Y.ToString("0.####", culture) + ","
+                + position.Z.ToString("0.####", culture) + ","
+                + heading.ToString("0.####", culture);
+        }
+
+        private static bool ParseVenuePosition(string value, out Vector3 position, out float heading)
+        {
+            position = Vector3.Zero;
+            heading = 0f;
+            if (string.IsNullOrEmpty(value)) return false;
+            string[] parts = value.Split(',');
+            if (parts.Length < 3) return false;
+            var culture = System.Globalization.CultureInfo.InvariantCulture;
+            float x, y, z;
+            if (!float.TryParse(parts[0].Trim(), System.Globalization.NumberStyles.Any, culture, out x)) return false;
+            if (!float.TryParse(parts[1].Trim(), System.Globalization.NumberStyles.Any, culture, out y)) return false;
+            if (!float.TryParse(parts[2].Trim(), System.Globalization.NumberStyles.Any, culture, out z)) return false;
+            position = new Vector3(x, y, z);
+            if (parts.Length >= 4)
+                float.TryParse(parts[3].Trim(), System.Globalization.NumberStyles.Any, culture, out heading);
+            return true;
         }
     }
 }

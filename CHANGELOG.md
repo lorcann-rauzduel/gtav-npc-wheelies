@@ -2,6 +2,15 @@
 
 All notable changes to Street Riders are documented here.
 
+## [Unreleased]
+
+### Added
+- **Parking multi-points avec cap**: chaque lieu de meeting autorise jusqu'à 24 points de parking (position + cap capturés en jeu). Chaque motard gare sa moto exactement à son emplacement, aligné sur le cap capturé (`TASK_VEHICLE_PARK`). L'ancien point unique reste pris en charge (migré automatiquement en premier point).
+- **Points de cercle authorés (8 max)**: les motards à pied se répartissent sur les points de cercle configurés et se tournent vers le centre du cercle; la capture se fait en jeu comme pour le parking.
+- **Parlote en cercle**: les motards posés autour du cercle discutent de façon aléatoire (`CHAT_STATE`/`CHAT_RESP`), chacun à son rythme pour éviter une conversation simultanée.
+- **Freestyle « croisière rapide »**: les bursts de wheelies se font désormais en roulant en continu à vitesse élevée au lieu de ralentir à l'approche d'un point, avec rappel dans la zone si le motard dérive hors du rayon.
+- **Menu MEETINGS enrichi**: ajout/repositionnement/suppression de points de parking et de points de cercle par lieu, avec persistance immédiate dans `meetings.ini` (clés `ParkingPoint1..24`, `CirclePoint1..8`).
+
 ## [2.0.1] - 2026-09-06
 
 ### Fixed

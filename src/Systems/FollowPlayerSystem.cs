@@ -53,6 +53,9 @@ namespace StreetRiders
             {
                 if (group.PedHandles.Count == 0) continue;
 
+                // Groups running a meeting are handled by MeetingSystem, not by follow logic.
+                if (group.MeetingVenueIndex >= 0) continue;
+
                 // Only groups with CanFollowPlayer = true can follow
                 GroupConfig grpCfg = FindGroupConfig(group.ConfigName);
                 if (grpCfg == null || !grpCfg.CanFollowPlayer) continue;

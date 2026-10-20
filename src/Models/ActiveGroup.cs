@@ -40,6 +40,11 @@ namespace StreetRiders
 
             // GameTime when the leader was first detected as invalid (0 = leader is ok)
             public int LeaderLostTime;
+
+            // -- Meeting state --
+            // Index in _meetingVenues running this group (-1 = no meeting). While >= 0 the whole
+            // group is choreographed by MeetingSystem and ignores the normal roam/follow machinery.
+            public int MeetingVenueIndex = -1;
         }
     }
 }

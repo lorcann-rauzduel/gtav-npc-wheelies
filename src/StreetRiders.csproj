@@ -6,9 +6,9 @@
     <LangVersion>latest</LangVersion>
     <AssemblyName>StreetRiders</AssemblyName>
     <RootNamespace>StreetRiders</RootNamespace>
-    <Version>2.0.1</Version>
+    <Version>2.1.0</Version>
     
-    <OutputPath>D:\SteamLibrary\steamapps\common\Grand Theft Auto V\scripts\</OutputPath>
+    <OutputPath>C:\Program Files (x86)\Steam\steamapps\common\Grand Theft Auto V\scripts\</OutputPath>
     
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
   </PropertyGroup>
@@ -22,11 +22,15 @@
 
   <ItemGroup>
     <Reference Include="ScriptHookVDotNet3">
-      <HintPath>D:\SteamLibrary\steamapps\common\Grand Theft Auto V\ScriptHookVDotNet3.dll</HintPath>
+      <HintPath>C:\Program Files (x86)\Steam\steamapps\common\Grand Theft Auto V\ScriptHookVDotNet3.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="ScriptHookV">
-      <HintPath>D:\SteamLibrary\steamapps\common\Grand Theft Auto V\ScriptHookV.dll</HintPath>
+      <HintPath>C:\Program Files (x86)\Steam\steamapps\common\Grand Theft Auto V\ScriptHookV.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="LemonUI.SHVDN3">
+      <HintPath>C:\Program Files (x86)\Steam\steamapps\common\Grand Theft Auto V\scripts\LemonUI.SHVDN3.dll</HintPath>
       <Private>False</Private>
     </Reference>
 

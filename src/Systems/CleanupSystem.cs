@@ -46,8 +46,10 @@ namespace StreetRiders
                             ReleasePursuingCops(ped.Handle);
                         remove = true;
                     }
-                    else if (ped.Position.DistanceTo(playerPos) > _cleanupDist)
+                    else if (ped.Position.DistanceTo(playerPos) > _cleanupDist && group.MeetingVenueIndex < 0)
                     {
+                        // Meeting groups are mustered around their venue even if far away;
+                        // their distance decay is handled when the meeting is dismantled.
                         ReleasePursuingCops(ped.Handle);
                         remove = true;
                         DeletePedAndBike(ped);
@@ -225,6 +227,9 @@ namespace StreetRiders
             foreach (var group in _activeGroups)
             {
                 if (group.PedHandles.Count == 0) continue;
+
+                // Meeting groups are choreographed by MeetingSystem, destinations stay fixed.
+                if (group.MeetingVenueIndex >= 0) continue;
 
                 // Don't refresh destinations for groups following the player
                 if (group.FollowMode != GroupFollowMode.Autonomous) continue;
