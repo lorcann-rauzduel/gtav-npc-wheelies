@@ -22,7 +22,7 @@ namespace StreetRiders
     /// </summary>
     public partial class StreetRidersScript : Script
     {
-        private static readonly string VERSION = "2.0.1";
+        private static readonly string VERSION = "2.1.0";
         public StreetRidersScript()
         {
             _bikeConfigs = new Dictionary<string, WheelieConfig>(StringComparer.OrdinalIgnoreCase);
@@ -63,6 +63,10 @@ namespace StreetRiders
 
             ProcessFollowPlayer();
             ProcessAllRiders();
+
+            UpdateMeetingSystem();
+            if (_meetingPool != null) _meetingPool.Process();
+            TickMeetingWheelies();
         }
 
         // =========================================================================
@@ -93,6 +97,12 @@ namespace StreetRiders
                 ToggleFollowPlayer();
             }
 
+            // ===== Meetings Menu =====
+            if (_meetingMenuKey != Keys.None && e.KeyCode == _meetingMenuKey)
+            {
+                ToggleMeetingMenu();
+            }
+
             // ===== Test Mode Keys =====
             if (!_testMode) return;
 
@@ -113,6 +123,10 @@ namespace StreetRiders
 
         private void OnAborted(object sender, EventArgs e)
         {
+            // Meetings: reset scheduler state so venues never resurrect post-abort.
+            HideMeetingMenu();
+            AbortAllMeetings();
+
             // Remove all blips before deleting entities
             foreach (var kv in _riders)
                 RemoveRiderBlip(kv.Value);

@@ -71,6 +71,10 @@ namespace StreetRiders
                     RemoveRiderBlip(state);
                 }
 
+                // Meeting riders are fully choreographed by MeetingSystem:
+                // wheelie, remount, retask and all rider processing is skipped here.
+                if (state.MeetingState != null) continue;
+
                 // Skip riders in idle scenarios (waiting for player)
                 if (state.InIdleScenario) continue;
 

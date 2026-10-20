@@ -47,6 +47,8 @@ namespace StreetRiders
         public bool WheelieNeedsRetask;
         public int WheelieAnimStartTime;
         public bool WheelieAnimUpperBodyOnly;
+
+            public MeetingRiderState MeetingState;   // null = normal rider, set while a meeting runs
         }
     }
 }

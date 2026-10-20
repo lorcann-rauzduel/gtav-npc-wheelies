@@ -2,6 +2,19 @@ Changelog
 
 All notable changes to Street Riders are documented here.
 
+[Unreleased]
+
+Added
+
+* Biker meetings: multi-point parking (up to 24 spots, position + heading captured in-game) — each biker
+  parks at his own spot, aligned to the captured heading. The old single-point schema migrates automatically.
+* Authored on-foot circle points (8 max): riders settle on the configured slots and face the circle center.
+* Random circle chatter: riders speak conversationally at their own pace (CHAT_STATE / CHAT_RESP).
+* Freestyle "fast cruise": wheelie bursts happen while riding continuously at high speed instead of slowing
+  at a target, with automatic recall into the zone when drifting outside the radius.
+* MEETINGS menu: add / move / delete parking and circle points per venue, persisted immediately in meetings.ini
+  (ParkingPoint1..24, CirclePoint1..8 keys).
+
 [2.0.1] - 2026-09-06
 
 Fixed
