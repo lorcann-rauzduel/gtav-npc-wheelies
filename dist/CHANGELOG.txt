@@ -16,6 +16,8 @@ Added
 Fixed
 
 * Meetup venues now reload correctly after a game restart or a config reload (F10).
+* Bikers no longer pile up on one parking spot; with more bikers than spots, limit the group or generate extra
+  spots (per venue, in the F8 menu).
 
 [2.0.1] - 2026-09-06
 

@@ -20,6 +20,7 @@ namespace StreetRiders
         private enum MeetingEditTool { Parking, Circle, Line }
 
         private const float MeetingEditDrawDistance = 150f;
+        private const float MeetingEditLabelDistance = 40f;
         private const float MeetingEditDeleteRadius = 5f;
         private const float MeetingLineMinLength = 20f;
         private const float MeetingCircleRadius = 2.5f;
@@ -296,32 +297,58 @@ namespace StreetRiders
         {
             Vector3 player = Game.Player.Character.Position;
 
-            foreach (MeetingPoint p in venue.ParkingPoints)
+            for (int i = 0; i < venue.ParkingPoints.Count; i++)
             {
-                if (player.DistanceTo(p.Position) > MeetingEditDrawDistance) continue;
+                MeetingPoint p = venue.ParkingPoints[i];
+                float distance = player.DistanceTo(p.Position);
+                if (distance > MeetingEditDrawDistance) continue;
                 Vector3 ground = GroundAt(p.Position);
                 World.DrawMarker(MarkerType.Cylinder, ground, Vector3.Zero, Vector3.Zero,
                     new Vector3(0.8f, 0.8f, 0.4f), EditParkingColor);
                 // Le trait indique le cap de stationnement (avant de la moto).
                 Vector3 tip = ground + GetHeadingDir(p.Heading) * 1.8f + new Vector3(0f, 0f, 0.3f);
                 World.DrawLine(ground + new Vector3(0f, 0f, 0.3f), tip, EditParkingColor);
+                DrawEditLabel(ground, distance, "P" + (i + 1), EditParkingColor);
             }
 
-            if (venue.CircleCenter.HasValue && player.DistanceTo(venue.CircleCenter.Value) < MeetingEditDrawDistance)
+            if (venue.CircleCenter.HasValue)
             {
-                float diameter = MeetingCircleRadius * 2f;
-                World.DrawMarker(MarkerType.Cylinder, GroundAt(venue.CircleCenter.Value), Vector3.Zero, Vector3.Zero,
-                    new Vector3(diameter, diameter, 0.3f), EditCircleColor);
+                float distance = player.DistanceTo(venue.CircleCenter.Value);
+                if (distance < MeetingEditDrawDistance)
+                {
+                    float diameter = MeetingCircleRadius * 2f;
+                    Vector3 ground = GroundAt(venue.CircleCenter.Value);
+                    World.DrawMarker(MarkerType.Cylinder, ground, Vector3.Zero, Vector3.Zero,
+                        new Vector3(diameter, diameter, 0.3f), EditCircleColor);
+                    DrawEditLabel(ground, distance, T("CERCLE", "CIRCLE"), Color.FromArgb(255, EditCircleColor));
+                }
             }
 
-            foreach (MeetingLine line in venue.Lines)
+            for (int i = 0; i < venue.Lines.Count; i++)
             {
+                MeetingLine line = venue.Lines[i];
                 if (player.DistanceTo(line.Middle) > MeetingEditDrawDistance + line.A.DistanceTo(line.B) * 0.5f) continue;
-                DrawEditSegment(line.A, line.B, line.OffRoad ? EditOffRoadLineColor : EditRoadLineColor);
+                Color color = line.OffRoad ? EditOffRoadLineColor : EditRoadLineColor;
+                DrawEditSegment(line.A, line.B, color);
+                string surface = line.OffRoad ? T("hors route", "off-road") : T("route", "road");
+                Vector3 middle = GroundAt(line.Middle);
+                DrawEditLabel(middle, player.DistanceTo(middle), $"L{i + 1} {surface}", color);
             }
 
             if (_editLineStart.HasValue)
                 DrawEditSegment(_editLineStart.Value, player, EditPendingColor);
+        }
+
+        /// <summary>Étiquette lisible au-dessus d'un marqueur, seulement à courte distance.</summary>
+        private static void DrawEditLabel(Vector3 ground, float distance, string text, Color color)
+        {
+            if (distance > MeetingEditLabelDistance) return;
+            PointF screen = GTA.UI.Screen.WorldToScreen(ground + new Vector3(0f, 0f, 1.6f));
+            if (screen == PointF.Empty) return;
+            new TextElement(text, screen, 0.45f, Color.FromArgb(255, color), GTA.UI.Font.ChaletLondon, Alignment.Center)
+            {
+                Outline = true
+            }.Draw();
         }
 
         private static void DrawEditSegment(Vector3 a, Vector3 b, Color color)
@@ -342,27 +369,48 @@ namespace StreetRiders
             return new Vector3(position.X, position.Y, ground);
         }
 
+        /// <summary>
+        /// Bandeau : les 3 outils (l'actif en jaune), une consigne pour l'outil actif, puis les touches.
+        /// </summary>
         private string EditHelpText()
         {
-            string tool;
+            string tools = string.Join("   ", new[]
+            {
+                ToolLabel(MeetingEditTool.Parking, T("PARKING", "PARKING")),
+                ToolLabel(MeetingEditTool.Circle, T("CERCLE", "CIRCLE")),
+                ToolLabel(MeetingEditTool.Line, T("LIGNE", "LINE"))
+            });
+
+            string instruction;
             switch (_editTool)
             {
                 case MeetingEditTool.Parking:
-                    tool = T("PARKING : Entrée = place ici (gare ta moto pour l'emplacement exact)",
-                             "PARKING: Enter = spot here (park your bike for the exact spot)");
+                    instruction = T("> Gare-toi où la moto doit aller, puis Entrée",
+                                    "> Park where the bike should go, then Enter");
                     break;
                 case MeetingEditTool.Circle:
-                    tool = T("CERCLE : Entrée = centre du cercle à pied", "CIRCLE: Enter = on-foot circle center");
+                    instruction = _editVenue.CircleCenter.HasValue
+                        ? T("> Place-toi au nouveau centre du cercle, puis Entrée", "> Stand at the new circle center, then Enter")
+                        : T("> Place-toi au centre du cercle à pied, puis Entrée", "> Stand at the on-foot circle center, then Enter");
                     break;
                 default:
-                    tool = _editLineStart.HasValue
-                        ? T("LIGNE : Entrée = fin de la ligne", "LINE: Enter = line end")
-                        : T("LIGNE : Entrée = début de la ligne · R = route/hors route", "LINE: Enter = line start · R = road/off-road");
+                    instruction = _editLineStart.HasValue
+                        ? T("> Va à la fin de la ligne, puis Entrée", "> Go to the end of the line, then Enter")
+                        : T("> Va au début de la ligne, puis Entrée~n~R : route / hors route (ligne proche)",
+                            "> Go to the start of the line, then Enter~n~R: road / off-road (nearest line)");
                     break;
             }
-            MeetingVenue v = _editVenue;
-            string counts = $"P {v.ParkingPoints.Count} · {T("Cercle", "Circle")} {(v.CircleCenter.HasValue ? T("oui", "yes") : T("non", "no"))} · {T("Lignes", "Lines")} {v.Lines.Count}";
-            return $"{v.Name} · {counts}~n~{tool}~n~E = {T("outil suivant", "next tool")} · {T("Retour = suppr. proche", "Backspace = delete nearest")} · {_meetingMenuKey} = {T("quitter", "exit")}";
+
+            return $"{T("ÉDITION", "EDITING")} · {_editVenue.Name}~n~"
+                + $"{T("Outil", "Tool")} : {tools}~n~"
+                + $"{instruction}~n~"
+                + $"{T("Entrée poser · E changer d'outil", "Enter place · E switch tool")}~n~"
+                + $"{T("Retour supprimer", "Backspace delete")} · {_meetingMenuKey} {T("terminer", "finish")}";
+        }
+
+        private string ToolLabel(MeetingEditTool tool, string label)
+        {
+            return tool == _editTool ? $"~y~[{label}]~s~" : label;
         }
 
         private static float DistanceToSegment(Vector3 p, Vector3 a, Vector3 b)

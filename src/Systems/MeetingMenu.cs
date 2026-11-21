@@ -59,12 +59,18 @@ namespace StreetRiders
         //  Root menu
         // =========================================================================
 
+        // Plages d'effectif proposées par lieu ; la première entrée = défaut de [Meetings].
+        private static readonly int[][] MeetingRiderRanges =
+        {
+            null, new[] { 2, 4 }, new[] { 4, 6 }, new[] { 6, 8 }, new[] { 8, 10 }, new[] { 10, 14 }
+        };
+
         private void BuildMeetingRoot(NativeMenu menu)
         {
             var createItem = new NativeItem(
-                T("Créer un lieu ici", "Create venue here"),
-                T("Pose une 1re place de parking ici puis ouvre l'édition.",
-                  "Places a first parking spot here, then opens the editor."));
+                T("+ Nouveau lieu ici", "+ New venue here"),
+                T("Pose une 1re place de parking ici puis ouvre la modification au sol.",
+                  "Places a first parking spot here, then opens on-ground editing."));
             createItem.Activated += (s, e) => CreateVenue();
             menu.Add(createItem);
 
@@ -81,21 +87,31 @@ namespace StreetRiders
             var sub = new NativeMenu("MEETINGS", venue.Name);
             _meetingPool.Add(sub);
             NativeSubmenuItem entry = parent.AddSubMenu(sub);
-            entry.Description = VenueSummary(venue);
+            entry.AltTitle = venue.ForceActive
+                ? T("EN COURS", "RUNNING")
+                : $"{venue.GroupName} · {Plural(venue.ParkingPoints.Count, T("place", "spot"), T("places", "spots"))} · {Plural(venue.Lines.Count, T("ligne", "line"), T("lignes", "lines"))}";
+            entry.Description = T("Lancer, modifier ou régler ce lieu.", "Start, edit or tune this venue.");
 
-            var editItem = new NativeItem(
-                T("Éditer", "Edit"),
-                venue.ForceActive
-                    ? T("Indisponible : arrête d'abord le meetup.", "Unavailable: stop the meetup first.")
-                    : T("Places, cercle et lignes posés au sol.", "Spots, circle and lines placed on the ground."));
-            editItem.Enabled = !venue.ForceActive;
-            editItem.Activated += (s, e) => BeginMeetingEdit(venue);
-            sub.Add(editItem);
+            AddStartStopItem(sub, venue);
+            AddEditItem(sub, venue);
+            AddGroupItem(sub, venue);
+            AddRidersItem(sub, venue);
+            AddExtraRidersItem(sub, venue);
+            AddStateItems(sub, venue);
 
+            var deleteItem = new NativeItem(
+                T("Supprimer ce lieu", "Delete this venue"),
+                T("Retire le lieu de meetings.ini.", "Removes the venue from meetings.ini."));
+            deleteItem.Activated += (s, e) => DeleteVenue(venue);
+            sub.Add(deleteItem);
+        }
+
+        private void AddStartStopItem(NativeMenu sub, MeetingVenue venue)
+        {
             if (venue.ForceActive)
             {
                 var stopItem = new NativeItem(
-                    T("Arrêter", "Stop"),
+                    T("Arrêter le meetup", "Stop the meetup"),
                     T("Les motards repartent en formation.", "Riders leave in formation."));
                 stopItem.Activated += (s, e) =>
                 {
@@ -104,53 +120,140 @@ namespace StreetRiders
                     RebuildMeetingMenus();
                 };
                 sub.Add(stopItem);
-            }
-            else
-            {
-                var startItem = new NativeItem(
-                    T("Démarrer", "Start"),
-                    T("Lance le meetup maintenant, même hors horaires.", "Starts the meetup now, even off-schedule."));
-                startItem.Activated += (s, e) => TryStartVenue(venue);
-                sub.Add(startItem);
+                return;
             }
 
-            if (_groupConfigs.Count > 0)
-            {
-                var groupItem = new NativeListItem<string>(
-                    T("Groupe", "Group"),
-                    T("Motards et motos utilisés (groups.ini).", "Riders and bikes used (groups.ini)."),
-                    _groupConfigs.Select(g => g.Name).ToArray());
-                int groupIndex = _groupConfigs.FindIndex(g => g.Name == venue.GroupName);
-                if (groupIndex >= 0) groupItem.SelectedIndex = groupIndex;
-                groupItem.ItemChanged += (sender, e) =>
-                {
-                    venue.GroupName = e.Object;
-                    SaveVenueToIni(venue);
-                    LogMeeting($"Menu: {venue.Name} group -> {venue.GroupName}");
-                };
-                sub.Add(groupItem);
-            }
-            else
+            var startItem = new NativeItem(
+                T("Lancer le meetup maintenant", "Start the meetup now"),
+                T("Le groupe arrive, se gare et s'installe, même hors horaires.",
+                  "The group rides in, parks and settles, even off-schedule."));
+            startItem.Activated += (s, e) => TryStartVenue(venue);
+            sub.Add(startItem);
+        }
+
+        private void AddEditItem(NativeMenu sub, MeetingVenue venue)
+        {
+            var editItem = new NativeItem(
+                T("Modifier au sol", "Edit on the ground"),
+                venue.ForceActive
+                    ? T("Indisponible : arrête d'abord le meetup.", "Unavailable: stop the meetup first.")
+                    : T("Places de parking, cercle et lignes de freestyle.", "Parking spots, circle and freestyle lines."));
+            editItem.Enabled = !venue.ForceActive;
+            editItem.Activated += (s, e) => BeginMeetingEdit(venue);
+            sub.Add(editItem);
+        }
+
+        private void AddGroupItem(NativeMenu sub, MeetingVenue venue)
+        {
+            if (_groupConfigs.Count == 0)
             {
                 var noGroup = new NativeItem(
                     T("Groupe", "Group"),
                     T("Aucun groupe : ajoute un [Group_X] dans groups.ini.", "No group: add a [Group_X] in groups.ini."));
                 noGroup.Enabled = false;
                 sub.Add(noGroup);
+                return;
             }
 
-            var deleteItem = new NativeItem(
-                T("Supprimer le lieu", "Delete venue"),
-                T("Retire le lieu de meetings.ini.", "Removes the venue from meetings.ini."));
-            deleteItem.Activated += (s, e) => DeleteVenue(venue);
-            sub.Add(deleteItem);
+            var groupItem = new NativeListItem<string>(
+                T("Groupe", "Group"),
+                T("Motards et motos utilisés (groups.ini).", "Riders and bikes used (groups.ini)."),
+                _groupConfigs.Select(g => g.Name).ToArray());
+            int groupIndex = _groupConfigs.FindIndex(g => g.Name == venue.GroupName);
+            if (groupIndex >= 0) groupItem.SelectedIndex = groupIndex;
+            groupItem.ItemChanged += (sender, e) =>
+            {
+                venue.GroupName = e.Object;
+                SaveVenueToIni(venue);
+                LogMeeting($"Menu: {venue.Name} group -> {venue.GroupName}");
+            };
+            sub.Add(groupItem);
         }
 
-        private string VenueSummary(MeetingVenue venue)
+        private void AddRidersItem(NativeMenu sub, MeetingVenue venue)
         {
+            string[] labels = MeetingRiderRanges
+                .Select(r => r == null
+                    ? T($"Défaut ({_meetingRidersMin}-{_meetingRidersMax})", $"Default ({_meetingRidersMin}-{_meetingRidersMax})")
+                    : $"{r[0]}-{r[1]}")
+                .ToArray();
+            var item = new NativeListItem<string>(
+                T("Nombre de motards", "Number of riders"),
+                T("Tiré au hasard dans la plage à chaque meetup.", "Picked at random in the range for each meetup."),
+                labels);
+
+            int selected = 0;
+            for (int i = 1; i < MeetingRiderRanges.Length; i++)
+                if (venue.RidersMin == MeetingRiderRanges[i][0] && venue.RidersMax == MeetingRiderRanges[i][1]) selected = i;
+            item.SelectedIndex = selected;
+
+            item.ItemChanged += (sender, e) =>
+            {
+                int[] range = MeetingRiderRanges[e.Index];
+                venue.RidersMin = range?[0];
+                venue.RidersMax = range?[1];
+                SaveVenueToIni(venue);
+                LogMeeting($"Menu: {venue.Name} riders -> {(range == null ? "default" : range[0] + "-" + range[1])}");
+            };
+            sub.Add(item);
+        }
+
+        private void AddExtraRidersItem(NativeMenu sub, MeetingVenue venue)
+        {
+            string defaultLabel = _meetingExtraRiders == MeetingExtraRiders.AutoSpots ? T("places auto", "auto spots") : T("limiter", "limit");
+            var item = new NativeListItem<string>(
+                T("Motards en trop", "Extra riders"),
+                T("Plus de motards que de places : limiter l'effectif, ou générer des places à la suite de la dernière.",
+                  "More riders than spots: limit the group, or generate spots after the last one."),
+                T($"Défaut ({defaultLabel})", $"Default ({defaultLabel})"),
+                T("Limiter aux places", "Limit to spots"),
+                T("Places auto", "Auto spots"));
+            item.SelectedIndex = !venue.ExtraRiders.HasValue ? 0 : venue.ExtraRiders.Value == MeetingExtraRiders.Limit ? 1 : 2;
+            item.ItemChanged += (sender, e) =>
+            {
+                venue.ExtraRiders = e.Index == 0 ? (MeetingExtraRiders?)null
+                    : e.Index == 1 ? MeetingExtraRiders.Limit : MeetingExtraRiders.AutoSpots;
+                SaveVenueToIni(venue);
+                LogMeeting($"Menu: {venue.Name} extra riders -> {(venue.ExtraRiders.HasValue ? venue.ExtraRiders.Value.ToString() : "default")}");
+            };
+            sub.Add(item);
+        }
+
+        private void AddStateItems(NativeMenu sub, MeetingVenue venue)
+        {
+            sub.Add(new NativeSeparatorItem(T("État", "Status")));
+
             string circle = venue.CircleCenter.HasValue ? T("oui", "yes") : T("non", "no");
-            string state = venue.ForceActive ? T(" · EN COURS", " · RUNNING") : "";
-            return $"{venue.GroupName} · P {venue.ParkingPoints.Count} · {T("Cercle", "Circle")} {circle} · {T("Lignes", "Lines")} {venue.Lines.Count}{state}";
+            string lines = venue.Lines.Count == 0
+                ? T("0 (pas de freestyle)", "0 (no freestyle)")
+                : venue.Lines.Count.ToString();
+            var state = new NativeItem(
+                T($"Places : {venue.ParkingPoints.Count}   Cercle : {circle}   Lignes : {lines}",
+                  $"Spots: {venue.ParkingPoints.Count}   Circle: {circle}   Lines: {lines}"),
+                StateHint(venue));
+            state.Enabled = false;
+            sub.Add(state);
+
+            sub.Add(new NativeSeparatorItem(""));
+        }
+
+        private string StateHint(MeetingVenue venue)
+        {
+            if (!venue.CircleCenter.HasValue && venue.Lines.Count == 0)
+                return T("Sans cercle ni ligne, ils restent devant leur moto. Ajoute-les via Modifier au sol.",
+                         "No circle or line: riders stay by their bikes. Add them with Edit on the ground.");
+            if (venue.Lines.Count == 0)
+                return T("Aucune ligne : pas de freestyle. Ajoute-en via Modifier au sol.",
+                         "No line: no freestyle. Add some with Edit on the ground.");
+            if (!venue.CircleCenter.HasValue)
+                return T("Pas de cercle : à pied, ils restent devant leur moto.",
+                         "No circle: on foot, riders stay by their bikes.");
+            return T("Lieu complet.", "Venue complete.");
+        }
+
+        private static string Plural(int count, string one, string many)
+        {
+            return $"{count} {(count > 1 ? many : one)}";
         }
 
         // =========================================================================

@@ -11,6 +11,7 @@ All notable changes to Street Riders are documented here.
 
 ### Fixed
 - Meetup venues are now reloaded correctly after a game restart or a config reload (F10).
+- Bikers no longer pile up on the same parking spot: each one gets its own spot and parks on it precisely. With more bikers than spots, choose per venue between limiting the group to the spots or generating extra spots after the last row.
 
 ## [2.0.1] - 2026-09-06
 
