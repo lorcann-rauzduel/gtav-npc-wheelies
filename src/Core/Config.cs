@@ -281,7 +281,7 @@ namespace StreetRiders
             _debugShowOverhead = GetIniBool(fullPath, "General", "ShowOverhead", false);
             _debugKey = ParseKey(GetIniString(fullPath, "General", "DebugKey", "Insert"));
             _reloadKey = ParseKey(GetIniString(fullPath, "General", "ReloadKey", "F10"));
-            _langEn = GetIniString(fullPath, "General", "Language", "fr").Equals("en", StringComparison.OrdinalIgnoreCase);
+            _langEn = !GetIniString(fullPath, "General", "Language", "en").Equals("fr", StringComparison.OrdinalIgnoreCase);
             _maxGroups = GetIniInt(fullPath, "General", "MaxActiveGroups", 3);
             _ridersMin = GetIniInt(fullPath, "General", "RidersPerGroupMin", 2);
             _ridersMax = GetIniInt(fullPath, "General", "RidersPerGroupMax", 5);
