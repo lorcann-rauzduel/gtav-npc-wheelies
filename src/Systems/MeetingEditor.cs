@@ -68,6 +68,7 @@ namespace StreetRiders
                 $"~b~Meetings: finished editing {_editVenue.Name}"), true);
             _editVenue = null;
             _editLineStart = null;
+            ReleaseEditHud();
         }
 
         /// <summary>Traite une touche du mode édition. Retourne true si la touche est consommée.</summary>
