@@ -34,6 +34,7 @@ namespace StreetRiders
         private MeetingVenue _editVenue;
         private MeetingEditTool _editTool = MeetingEditTool.Parking;
         private Vector3? _editLineStart;
+        private int _editStartFrame;
 
         private bool IsEditingMeeting
         {
@@ -57,7 +58,8 @@ namespace StreetRiders
             _editVenue = venue;
             _editTool = MeetingEditTool.Parking;
             _editLineStart = null;
-            LogMeeting($"Edit: begin {venue.Name}");
+            _editStartFrame = Game.FrameCount;
+            LogMeeting($"Edit: begin {venue.Name} (input={(IsUsingGamepad ? "gamepad" : "keyboard")})");
         }
 
         private void EndMeetingEdit(string reason)
@@ -101,6 +103,8 @@ namespace StreetRiders
                 return;
             }
 
+            PollMeetingEditorPad();
+            if (!IsEditingMeeting) return;
             DrawEditVenue(_editVenue);
             DrawEditHud();
         }

@@ -29,7 +29,7 @@ namespace StreetRiders
                 _editButtonsFallback = false;
             }
 
-            string signature = $"{_editTool}|{_editLineStart.HasValue}|{_editVenue.Lines.Count > 0}|{_langEn}";
+            string signature = $"{_editTool}|{_editLineStart.HasValue}|{_editVenue.Lines.Count > 0}|{_langEn}|{IsUsingGamepad}";
             if (signature != _editButtonsSignature)
             {
                 FillEditButtons(_editButtons);
@@ -75,13 +75,17 @@ namespace StreetRiders
         /// </summary>
         private void FillEditButtons(InstructionalButtons buttons)
         {
+            bool pad = IsUsingGamepad;
             buttons.Clear();
-            buttons.Add(new InstructionalButton(T("Poser", "Place"), Control.FrontendAccept));
-            buttons.Add(new InstructionalButton(T("Outil suivant", "Next tool"), Control.Context));
+            buttons.Add(new InstructionalButton(T("Poser", "Place"), PadPlace));
+            buttons.Add(new InstructionalButton(T("Outil suivant", "Next tool"), pad ? PadNextTool : Control.Context));
             if (ShowsSurfaceToggle())
-                buttons.Add(new InstructionalButton(T("Route / hors route", "Road / off-road"), Control.Reload));
-            buttons.Add(new InstructionalButton(DeleteLabel(), Control.FrontendCancel));
-            buttons.Add(new InstructionalButton(T("Terminer", "Finish"), "t_" + _meetingMenuKey));
+                buttons.Add(new InstructionalButton(T("Route / hors route", "Road / off-road"), pad ? PadSurface : Control.Reload));
+            buttons.Add(new InstructionalButton(DeleteLabel(), PadDelete));
+            if (pad)
+                buttons.Add(new InstructionalButton(T("Terminer", "Finish"), PadFinish));
+            else
+                buttons.Add(new InstructionalButton(T("Terminer", "Finish"), "t_" + _meetingMenuKey));
         }
 
         private bool ShowsSurfaceToggle()
@@ -97,12 +101,13 @@ namespace StreetRiders
         /// <summary>Secours texte : mêmes touches que la barre, sur une ligne.</summary>
         private string EditKeysText()
         {
-            string keys = T("Entrée", "Enter") + ": " + T("Poser", "Place")
-                + " · E: " + T("Outil suivant", "Next tool");
+            bool pad = IsUsingGamepad;
+            string keys = (pad ? "A" : T("Entrée", "Enter")) + ": " + T("Poser", "Place")
+                + " · " + (pad ? "RB" : "E") + ": " + T("Outil suivant", "Next tool");
             if (ShowsSurfaceToggle())
-                keys += " · R: " + T("Route / hors route", "Road / off-road");
-            keys += " · " + T("Retour", "Backspace") + ": " + DeleteLabel()
-                + " · " + _meetingMenuKey + ": " + T("Terminer", "Finish");
+                keys += " · " + (pad ? "X" : "R") + ": " + T("Route / hors route", "Road / off-road");
+            keys += " · " + (pad ? "B" : T("Retour", "Backspace")) + ": " + DeleteLabel()
+                + " · " + (pad ? T("Croix bas", "D-pad down") : _meetingMenuKey.ToString()) + ": " + T("Terminer", "Finish");
             return keys;
         }
 
