@@ -5,11 +5,12 @@ All notable changes to Street Riders are documented here.
 ## [Unreleased]
 
 ### Added
-- **Parking multi-points avec cap**: chaque lieu de meeting autorise jusqu'à 24 points de parking (position + cap capturés en jeu). Chaque motard gare sa moto exactement à son emplacement, aligné sur le cap capturé (`TASK_VEHICLE_PARK`). L'ancien point unique reste pris en charge (migré automatiquement en premier point).
-- **Points de cercle authorés (8 max)**: les motards à pied se répartissent sur les points de cercle configurés et se tournent vers le centre du cercle; la capture se fait en jeu comme pour le parking.
-- **Parlote en cercle**: les motards posés autour du cercle discutent de façon aléatoire (`CHAT_STATE`/`CHAT_RESP`), chacun à son rythme pour éviter une conversation simultanée.
-- **Freestyle « croisière rapide »**: les bursts de wheelies se font désormais en roulant en continu à vitesse élevée au lieu de ralentir à l'approche d'un point, avec rappel dans la zone si le motard dérive hors du rayon.
-- **Menu MEETINGS enrichi**: ajout/repositionnement/suppression de points de parking et de points de cercle par lieu, avec persistance immédiate dans `meetings.ini` (clés `ParkingPoint1..24`, `CirclePoint1..8`).
+- **Biker meetups**: a group rides to a venue you created, each biker parks at their own spot, then they hang out on foot in a circle or in front of their bike, chat, take turns doing wheelie runs on your freestyle lines, and leave in formation at the end. Meetups follow a day/hour schedule or can be started any time from the MEETINGS menu (F8).
+- **In-world meetup editor**: create a venue with F8, then place parking spots, the circle center and freestyle lines directly on the ground (Enter to place, Backspace to delete, E to switch tool, R to switch a line between road and off-road). Every change is saved instantly and shown as markers in the world.
+- **Road and off-road freestyle lines**: each line is a start/end segment ridden back and forth, either following the road or going straight across terrain. At most two bikers share a line at the same time.
+
+### Fixed
+- Meetup venues are now reloaded correctly after a game restart or a config reload (F10).
 
 ## [2.0.1] - 2026-09-06
 

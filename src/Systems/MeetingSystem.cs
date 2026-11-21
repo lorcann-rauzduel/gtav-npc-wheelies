@@ -10,24 +10,12 @@ using GTA.UI;
 namespace StreetRiders
 {
     /// <summary>
-    /// Biker meetings: scheduled (day + hour window) gatherings mustered near a venue that
-    /// owns AUTHORED parking points (Position + Heading captured in-game) and AUTHORED
-    /// circle points. Each venue is bound to an existing group, so peds/bikes/colors/
-    /// relationships/blips are inherited.
-    ///
-    /// Riders arrive rode in and park at their own captured point via TASK_VEHICLE_PARK
-    /// (aligned to the captured heading). They dismount and take one of two on-foot roles,
-    /// or ride a freestyle burst:
-    ///   - Idle: each rider settles on an authored circle point and FACES the circle center,
-    ///     playing the same idle scenarios as in follow mode (_idleScenarios). While settled
-    ///     they chat randomly using CHAT_STATE / CHAT_RESP ambient speech;
-    ///   - Lean: WORLD_HUMAN_LEANING, one rider stuck to the side of his own bike;
-    ///   - FreestyleRiding: fast continuous cruise (TASK_VEHICLE_DRIVE_WANDER at drive speed)
-    ///     so wheelies/stunts trigger in bursts without slowing at a target, bounded by the
-    ///     tunable FreestyleRadius; drift beyond the radius pulls the rider back inside.
-    /// Roles rotate on RoleChangeMinMs/MaxMs: the leaner switches out, circle riders come
-    /// and go between on-foot time and freestyle bursts.
-    /// ForceActive venues started from the Meetings menu bypass the schedule entirely.
+    /// Meetings de motards : orchestration des lieux (planning jour + plage horaire,
+    /// matérialisation à l'approche du joueur, démarrage forcé depuis le menu), arrivée du
+    /// convoi, départ en formation et passe wheelie par frame des motards en freestyle.
+    /// Chaque lieu est lié à un groupe existant (peds, motos, couleurs, relations, blips).
+    /// Le comportement individuel des motards est dans MeetingRiderBehavior.cs,
+    /// l'édition des lieux dans MeetingEditor.cs.
     /// </summary>
     public partial class StreetRidersScript
     {
@@ -154,10 +142,17 @@ namespace StreetRiders
             {
                 foreach (var venue in _meetingVenues)
                 {
-                    if (venue.ForceActive) continue;
+                    if (activeCount >= _meetingMaxConcurrent) break;
+                    if (venue.ForceActive || venue == _editVenue || now < venue.NextScheduleAttempt) continue;
                     if (playerPos.DistanceTo(MeetingCenter(venue)) > _meetingMaterializeDist) continue;
 
-                    StartVenueMeeting(venue, false);
+                    LogMeeting($"Scheduler: materializing {venue.Name} (day={day} hour={hour})");
+                    if (!StartVenueMeeting(venue, false))
+                    {
+                        // Échec (groupe absent, pas de route...) : on ne réessaie pas à chaque passage.
+                        venue.NextScheduleAttempt = now + 60000;
+                        continue;
+                    }
                     activeCount++;
                     if (_debug)
                         Notification.PostTicker($"~b~Meetings: {venue.Name} materialized (schedule)", true);
@@ -171,6 +166,7 @@ namespace StreetRiders
                 bool nearVenue = playerPos.DistanceTo(MeetingCenter(venue)) < _meetingMaterializeDist;
                 if (!nearVenue)
                 {
+                    LogMeeting($"Scheduler: {venue.Name} dismissed (player left)");
                     DismantleVenueMeeting(venue, true);
                     if (_debug)
                         Notification.PostTicker($"~b~Meetings: {venue.Name} dismissed (player left)", true);
@@ -182,14 +178,13 @@ namespace StreetRiders
         //  Meeting start (convoy in) and dismantle (formation out)
         // =========================================================================
 
-        private void StartVenueMeeting(MeetingVenue venue, bool forced)
+        private bool StartVenueMeeting(MeetingVenue venue, bool forced)
         {
-            if (venue.ForceActive) return;
+            if (venue.ForceActive) return false;
             GroupConfig groupCfg = FindGroupConfig(venue.GroupName);
             if (groupCfg == null)
             {
-                Notification.PostTicker($"~r~Meetings: {venue.Name} has no group '{venue.GroupName}'", true);
-                return;
+                return FailVenueStart(venue, forced, $"group '{venue.GroupName}' missing", T($"groupe '{venue.GroupName}' introuvable dans groups.ini", $"group '{venue.GroupName}' not found in groups.ini"));
             }
 
             Vector3 venueCenter = MeetingCenter(venue);
@@ -197,8 +192,7 @@ namespace StreetRiders
             float spawnHeading;
             if (!FindRoadNode(venueCenter, 120f, 320f, out spawnPos, out spawnHeading))
             {
-                Notification.PostTicker($"~r~Meetings: {venue.Name} — no staging road found", true);
-                return;
+                return FailVenueStart(venue, forced, "no staging road node", T("aucune route proche pour faire arriver le convoi", "no nearby road for the convoy to arrive"));
             }
 
             int count = _rnd.Next(_meetingRidersMin, _meetingRidersMax + 1);
@@ -245,8 +239,7 @@ namespace StreetRiders
             }
             if (bikeModels.Count == 0)
             {
-                Notification.PostTicker($"~r~Meetings: {venue.Name} — bike models failed to load", true);
-                return;
+                return FailVenueStart(venue, forced, "bike models failed to load", T("modèles de motos introuvables (groups.ini)", "bike models failed to load (groups.ini)"));
             }
 
             // --- Load ped models in parallel ---
@@ -381,21 +374,35 @@ namespace StreetRiders
 
             if (group.PedHandles.Count == 0)
             {
-                Notification.PostTicker($"~r~Meetings: {venue.Name} — no riders created", true);
-                return;
+                return FailVenueStart(venue, forced, "no rider created", T("aucun motard n'a pu être créé", "no rider could be created"));
             }
 
             _activeGroups.Add(group);
             venue.ActiveGroupId = group.Id;
             venue.ForceActive = true;
 
+            LogMeeting($"Meeting {venue.Name}: started {group.PedHandles.Count}x {groupCfg.Name} forced={forced} parking={venue.ParkingPoints.Count} circle={venue.CircleCenter.HasValue} lines={venue.Lines.Count}");
             if (_debug)
                 Notification.PostTicker($"~g~Meetings: {venue.Name} started ({group.PedHandles.Count}x {groupCfg.Name}){(forced ? " [forced]" : "")}", true);
+            return true;
+        }
+
+        /// <summary>
+        /// Échec de démarrage : toujours journalisé ; le joueur n'est prévenu que s'il a
+        /// lui-même lancé le meetup (le planning échoue en silence et réessaie plus tard).
+        /// </summary>
+        private bool FailVenueStart(MeetingVenue venue, bool forced, string logReason, string playerReason)
+        {
+            LogMeeting($"Meeting {venue.Name}: start failed ({logReason}) forced={forced}");
+            if (forced)
+                Notification.PostTicker(T($"~r~Meetings : {venue.Name} — {playerReason}", $"~r~Meetings: {venue.Name} — {playerReason}"), true);
+            return false;
         }
 
         private void DismantleVenueMeeting(MeetingVenue venue, bool depart)
         {
             ActiveGroup group = FindGroupById(venue.ActiveGroupId);
+            LogMeeting($"Meeting {venue.Name}: dismantle depart={depart} riders={(group != null ? group.PedHandles.Count : 0)}");
             venue.ForceActive = false;
             venue.ActiveGroupId = -1;
             if (group == null) return;
@@ -529,519 +536,24 @@ namespace StreetRiders
         }
 
         // =========================================================================
-        //  Per-rider finite state machine
-        // =========================================================================
-
-        private void ProcessMeetingRider(MeetingVenue venue, ActiveGroup group, Ped ped, RiderState st, int now)
-        {
-            MeetingRiderState ms = st.MeetingState;
-            if (ms == null || ms.VenueIndex < 0) return;
-            if (!ped.IsAlive || ped.IsRagdoll) return;
-
-            Vehicle bike = ped.CurrentVehicle;
-            Vehicle myBike = GetMyBike(st);
-
-            // Bike destroyed/submerged mid-meeting: rider falls back to the on-foot life.
-            if (myBike != null && (myBike.IsDead || myBike.IsInWater))
-            {
-                myBike = null;
-            }
-
-            switch (ms.Phase)
-            {
-                case MeetingRiderPhase.Arriving:
-                    if (bike == null || bike.IsDead || bike.IsInWater)
-                    {
-                        // Still traveling and the bike broke: nothing left to do but wander in.
-                        if (TryMountBike(ms, ped, st, now)) break;
-                        EnterOnFoot(venue, group, ms, ped, st, now);
-                        break;
-                    }
-
-                    float parkDist = bike.Position.DistanceTo(ms.ParkingOffset);
-                    if (parkDist < 8f && bike.Speed < 2f)
-                    {
-                        // Reached the spot: engine idles, handbrake holds, rider gets ready.
-                        Function.Call(Hash.SET_VEHICLE_HANDBRAKE, bike.Handle, true);
-                        ms.Phase = MeetingRiderPhase.ParkedOnBike;
-                        ms.HoldUntil = now + _rnd.Next(2000, 6000);
-                        if (_debug) DrawDebugText(ped, "MEET: ParkedOnBike", Color.SkyBlue);
-                    }
-                    else if (now > ms.NextTaskTime)
-                    {
-                        DriveToParkingOffset(ms, ped, st, now);
-                    }
-                    break;
-
-                case MeetingRiderPhase.ParkedOnBike:
-                    if (bike == null || !ped.IsInVehicle())
-                    {
-                        EnterOnFoot(venue, group, ms, ped, st, now);
-                        break;
-                    }
-                    if (now >= ms.HoldUntil)
-                    {
-                        Function.Call(Hash.TASK_LEAVE_VEHICLE, ped.Handle, bike.Handle, 0);
-                        ms.Phase = MeetingRiderPhase.Dismounting;
-                        ms.HoldUntil = now + 5000;
-                    }
-                    break;
-
-                case MeetingRiderPhase.Dismounting:
-                    if (!ped.IsInVehicle())
-                    {
-                        EnterOnFoot(venue, group, ms, ped, st, now);
-                    }
-                    else if (now > ms.HoldUntil)
-                    {
-                        Function.Call(Hash.TASK_LEAVE_VEHICLE, ped.Handle, bike.Handle, 0);
-                        ms.HoldUntil = now + 5000;
-                    }
-                    break;
-
-                case MeetingRiderPhase.OnFoot:
-                    if (ped.IsInVehicle())
-                    {
-                        if (now > ms.NextTaskTime)
-                        {
-                            Function.Call(Hash.TASK_LEAVE_VEHICLE, ped.Handle, bike.Handle, 0);
-                            ms.NextTaskTime = now + 3000;
-                        }
-                        break;
-                    }
-                    UpdateOnFootRole(venue, group, ms, ped, st, now);
-                    break;
-
-                case MeetingRiderPhase.Mounting:
-                    if (ped.IsInVehicle())
-                    {
-                        StartFreestyleRiding(venue, ped, st, ms, now);
-                    }
-                    else if (now >= ms.HoldUntil)
-                    {
-                        if (!TryMountBike(ms, ped, st, now))
-                            EnterOnFoot(venue, group, ms, ped, st, now);
-                    }
-                    break;
-
-                case MeetingRiderPhase.FreestyleRiding:
-                    if (!ped.IsInVehicle())
-                    {
-                        // Fell off mid-burst: remount if the bike is near, else back on foot.
-                        if (!TryMountBike(ms, ped, st, now))
-                            EnterOnFoot(venue, group, ms, ped, st, now);
-                        break;
-                    }
-                    UpdateFreestyleRiding(venue, ms, ped, st, now);
-                    break;
-
-                case MeetingRiderPhase.Paused:
-                    if (!ped.IsInVehicle())
-                    {
-                        EnterOnFoot(venue, group, ms, ped, st, now);
-                        break;
-                    }
-                    // Breather ends once back at the personal offset: get off and rejoin
-                    // the crowd so the on-foot role rotation keeps turning.
-                    float backDist = bike.Position.DistanceTo(ms.ParkingOffset);
-                    if (backDist < 8f && bike.Speed < 2f)
-                    {
-                        Function.Call(Hash.SET_VEHICLE_HANDBRAKE, bike.Handle, true);
-                        Function.Call(Hash.TASK_LEAVE_VEHICLE, ped.Handle, bike.Handle, 0);
-                        ms.Phase = MeetingRiderPhase.Dismounting;
-                        ms.HoldUntil = now + 5000;
-                    }
-                    else if (now > ms.NextTaskTime)
-                    {
-                        DriveToParkingOffset(ms, ped, st, now);
-                    }
-                    break;
-            }
-        }
-
-        private Vehicle GetMyBike(RiderState st)
-        {
-            Vehicle bike = (Vehicle)Entity.FromHandle(st.LastBikeHandle);
-            if (bike != null && bike.Exists() && !bike.IsDead && !bike.IsInWater)
-                return bike;
-            return null;
-        }
-
-        /// <summary>
-        /// Tries to get the rider back on their bike. Returns false when the bike is gone.
-        /// </summary>
-        private bool TryMountBike(MeetingRiderState ms, Ped ped, RiderState st, int now)
-        {
-            Vehicle myBike = GetMyBike(st);
-            if (myBike == null) return false;
-            if (ped.Position.DistanceTo(myBike.Position) > 40f) return false;
-
-            if (now > ms.NextTaskTime)
-            {
-                Function.Call(Hash.CLEAR_PED_TASKS, ped.Handle);
-                Function.Call(Hash.TASK_ENTER_VEHICLE, ped.Handle, myBike.Handle, -1, -1, 2.0f, 1, 0);
-                ms.NextTaskTime = now + 3000;
-            }
-            return true;
-        }
-
-        // =========================================================================
-        //  On-foot roles
-        // =========================================================================
-
-        private void EnterOnFoot(MeetingVenue venue, ActiveGroup group, MeetingRiderState ms, Ped ped, RiderState st, int now)
-        {
-            ms.Phase = MeetingRiderPhase.OnFoot;
-            ms.NextTaskTime = now + 300;
-            st.Phase = Phase.Idle;
-            st.WheelieAnimPlayed = false;
-            st.WheelieAnimTriggerTime = 0;
-            st.WheelieNeedsRetask = false;
-
-            // Crowd allocation: one single leaner stuck to the side of his bike, everyone
-            // else joins the shared circle (slots spread so the ring grows with the crowd).
-            int leaners = CountOnFootMode(venue, MeetingOnFootMode.Lean);
-
-            if (leaners < 1)
-            {
-                ms.OnFootMode = MeetingOnFootMode.Lean;
-                ms.ChangeTime = now + _rnd.Next(_meetingRoleChangeMinMs, _meetingRoleChangeMaxMs + 1);
-                ms.ScenarioName = "WORLD_HUMAN_LEANING";
-                // Side is picked once per role: +1 right / -1 left, computed against the
-                // bike heading so he always stands flat against the side of his own bike.
-                ms.LeanSideSign = _rnd.Next(100) < 50 ? 1 : -1;
-                SetLeanHangout(ms, st);
-
-                Function.Call(Hash.CLEAR_PED_TASKS, ped.Handle);
-                if (_debug) DrawDebugText(ped, "MEET: Lean", Color.LightBlue);
-                return;
-            }
-
-            // Everyone else joins the circle: slot index = current gatherer count, so the
-            // authored circle points (or the fallback ring) spread across the crowd.
-            ms.OnFootMode = MeetingOnFootMode.Idle;
-            ms.ChangeTime = now + _rnd.Next(_meetingRoleChangeMinMs, _meetingRoleChangeMaxMs + 1);
-            List<string> pool = _idleScenarios.Count > 0 ? _idleScenarios : new List<string> { "WORLD_HUMAN_SMOKING" };
-            ms.ScenarioName = pool[_rnd.Next(pool.Count)];
-            ms.CircleSlot = CountOnFootMode(venue, MeetingOnFootMode.Idle);
-            ms.HangoutPoint = MeetingCirclePoint(venue, ms.CircleSlot);
-            ms.LastTalkTime = now; // chaque motard parle à un rythme indépendant
-
-            Function.Call(Hash.CLEAR_PED_TASKS, ped.Handle);
-        }
-
-        /// <summary>
-        /// Circle slot for an on-foot rider. Uses the authored CirclePoints when the venue
-        /// has them (each rider gets one of the 8 edited points); otherwise falls back to
-        /// evenly spaced slots on a ring in front of the first parking point.
-        /// </summary>
-        private Vector3 MeetingCirclePoint(MeetingVenue venue, int slot)
-        {
-            if (venue.CirclePoints.Count > 0)
-                return venue.CirclePoints[slot % venue.CirclePoints.Count].Position;
-
-            const int maxSlots = 8;
-            const float ringRadius = 4.0f;
-            Vector3 center = venue.Center + GetHeadingDir(venue.ParkingPoints[0].Heading) * 7f;
-            double ang = (slot % maxSlots) * Math.PI * 2.0 / maxSlots;
-            return center + RandomOffset(0.3f, 0.6f)
-                + new Vector3((float)Math.Cos(ang) * ringRadius, (float)Math.Sin(ang) * ringRadius, 0f);
-        }
-
-        /// <summary>
-        /// Geometrical center of the authored circle points (average), or the fallback ring
-        /// center if the venue has none — riders face this point so the circle reads inward.
-        /// </summary>
-        private Vector3 MeetingCircleCenter(MeetingVenue venue)
-        {
-            if (venue.CirclePoints.Count > 0)
-            {
-                Vector3 sum = Vector3.Zero;
-                foreach (var p in venue.CirclePoints) sum += p.Position;
-                return sum / venue.CirclePoints.Count;
-            }
-            return venue.Center + GetHeadingDir(venue.ParkingPoints[0].Heading) * 7f;
-        }
-
-        /// <summary>
-        /// Places the leaner flush against the left or right side of his own bike, using
-        /// the bike heading so the side offset stays correct whatever direction it faces.
-        /// </summary>
-        private void SetLeanHangout(MeetingRiderState ms, RiderState st)
-        {
-            Vehicle bike = GetMyBike(st);
-            if (bike == null || !bike.Exists()) return;
-
-            Vector3 forward = GetHeadingDir(bike.Heading);
-            // Perpendicular of the bike heading: right side (+), left side (-).
-            Vector3 side = new Vector3(-forward.Y, forward.X, 0f) * ms.LeanSideSign;
-            // Bike half-width + a small gap so he touches the side without clipping.
-            ms.HangoutPoint = bike.Position + side * 1.1f + forward * 1.0f;
-        }
-
-        private int CountOnFootMode(MeetingVenue venue, MeetingOnFootMode mode)
-        {
-            ActiveGroup group = FindGroupById(venue.ActiveGroupId);
-            if (group == null) return 0;
-            int count = 0;
-            foreach (int pedHandle in group.PedHandles)
-            {
-                RiderState st;
-                if (_riders.TryGetValue(pedHandle, out st) && st.MeetingState != null
-                    && st.MeetingState.Phase == MeetingRiderPhase.OnFoot
-                    && st.MeetingState.OnFootMode == mode)
-                    count++;
-            }
-            return count;
-        }
-
-        private void UpdateOnFootRole(MeetingVenue venue, ActiveGroup group, MeetingRiderState ms, Ped ped, RiderState st, int now)
-        {
-            if (ms.OnFootMode == MeetingOnFootMode.Idle)
-            {
-                float d = ped.Position.DistanceTo(ms.HangoutPoint);
-                if (d > 1.2f)
-                {
-                    if (now > ms.NextTaskTime)
-                    {
-                        Function.Call(Hash.TASK_GO_TO_COORD_ANY_MEANS,
-                            ped.Handle, ms.HangoutPoint.X, ms.HangoutPoint.Y, ms.HangoutPoint.Z,
-                            1.0f, 0, false, 0x42B90000, 0f);
-                        ms.NextTaskTime = now + 4000;
-                    }
-                }
-                else
-                {
-                    // Une fois arrivé à son point de cercle authoré, il regarde vers le centre
-                    // puis boucle son scénario idle — le cercle se lit vers l'intérieur.
-                    Vector3 center = MeetingCircleCenter(venue);
-                    if (ms.ScenarioName.Length > 0
-                        // IS_PED_ACTIVE_IN_SCENARIO
-                        && !Function.Call<bool>((Hash)0xAA135F9482C82CC3, ped.Handle))
-                    {
-                        Function.Call(Hash.TASK_TURN_PED_TO_FACE_COORD,
-                            ped.Handle, center.X, center.Y, center.Z, 1500);
-                        Function.Call(Hash.TASK_START_SCENARIO_IN_PLACE, ped.Handle, ms.ScenarioName, 0, true);
-                    }
-                }
-
-                UpdateCircleChatter(ped, ms, now);
-            }
-            else // Lean
-            {
-                UpdateLeanOnBike(ms, ped, st, now);
-            }
-
-            // Timed decision: re-roll the on-foot crowd or join the freestyle riders.
-            if (now >= ms.ChangeTime)
-            {
-                if (_rnd.Next(100) < 50)
-                {
-                    EnterOnFoot(venue, group, ms, ped, st, now);
-                }
-                else
-                {
-                    Vehicle myBike = GetMyBike(st);
-                    if (myBike != null && ped.Position.DistanceTo(myBike.Position) < 60f)
-                    {
-                        ms.Phase = MeetingRiderPhase.Mounting;
-                        ms.HoldUntil = now + 6000;
-                        Function.Call(Hash.CLEAR_PED_TASKS, ped.Handle);
-                        Function.Call(Hash.TASK_ENTER_VEHICLE, ped.Handle, myBike.Handle, -1, -1, 2.0f, 1, 0);
-                        return;
-                    }
-                    EnterOnFoot(venue, group, ms, ped, st, now);
-                }
-            }
-        }
-
-        /// <summary>
-        /// Parlote ambiante du cercle : un motard posé parle de façon aléatoire avec
-        /// CHAT_STATE / CHAT_RESP (même principe que le dialogue follow-mode), en
-        /// respectant un rythme personnel pour ne pas tous parler en même temps.
-        /// </summary>
-        private void UpdateCircleChatter(Ped ped, MeetingRiderState ms, int now)
-        {
-            if (ms.ScenarioName.Length == 0) return;
-            if (now - ms.LastTalkTime > _rnd.Next(8000, 15000))
-            {
-                if (_rnd.Next(100) < 45)
-                {
-                    string speech = _rnd.Next(100) < 50 ? "CHAT_STATE" : "CHAT_RESP";
-                    Function.Call(Hash.PLAY_PED_AMBIENT_SPEECH_NATIVE,
-                        ped.Handle, speech, "SPEECH_PARAMS_FORCE_NORMAL");
-                    if (_debug) DrawDebugText(ped, "MEET: talk " + speech, Color.LightGoldenrodYellow);
-                }
-                ms.LastTalkTime = now;
-            }
-        }
-
-        private void UpdateLeanOnBike(MeetingRiderState ms, Ped ped, RiderState st, int now)
-        {
-            // Re-compute the spot against the bike side every so often, so the leaner stays
-            // glued to the bike even if it shifts a little.
-            if (now > ms.NextTaskTime)
-            {
-                SetLeanHangout(ms, st);
-                ms.NextTaskTime = now + 3000;
-            }
-
-            float d = ped.Position.DistanceTo(ms.HangoutPoint);
-            if (d > 1.8f)
-            {
-                if (now > ms.NextTaskTime + 3000)
-                {
-                    Function.Call(Hash.TASK_GO_TO_COORD_ANY_MEANS,
-                        ped.Handle, ms.HangoutPoint.X, ms.HangoutPoint.Y, ms.HangoutPoint.Z,
-                        1.0f, 0, false, 0x42B90000, 0f);
-                }
-            }
-            else
-            {
-                // Face the bike so the lean pose reads against the side, then loop it.
-                Vehicle bike = GetMyBike(st);
-                if (bike != null && bike.Exists())
-                    Function.Call(Hash.TASK_TURN_PED_TO_FACE_ENTITY, ped.Handle, bike.Handle, 1500);
-
-                if (ms.ScenarioName.Length > 0
-                    // IS_PED_ACTIVE_IN_SCENARIO
-                    && !Function.Call<bool>((Hash)0xAA135F9482C82CC3, ped.Handle))
-                {
-                    Function.Call(Hash.TASK_START_SCENARIO_IN_PLACE, ped.Handle, ms.ScenarioName, 0, true);
-                }
-            }
-        }
-
-        // =========================================================================
-        //  Freestyle riding (wheelie bursts around the parking zone, no circuit)
-        // =========================================================================
-
-        private void DriveToParkingOffset(MeetingRiderState ms, Ped ped, RiderState st, int now)
-        {
-            // TASK_VEHICLE_PARK drives to the spot and aligns the bike to the captured heading
-            // (mode 1 = park forward). Radius 20 = reach the exact spot before completion.
-            Function.Call(Hash.TASK_VEHICLE_PARK,
-                ped.Handle, ped.CurrentVehicle.Handle,
-                ms.ParkingOffset.X, ms.ParkingOffset.Y, ms.ParkingOffset.Z,
-                ms.ParkingHeading, 1, 20f, false);
-            ms.NextTaskTime = now + 4000;
-        }
-
-        private void StartFreestyleRiding(MeetingVenue venue, Ped ped, RiderState st, MeetingRiderState ms, int now)
-        {
-            ms.Phase = MeetingRiderPhase.FreestyleRiding;
-            ms.ChangeTime = now + _rnd.Next(_meetingFreestyleMinMs, _meetingFreestyleMaxMs + 1);
-
-            Vehicle bike = ped.CurrentVehicle;
-            if (bike != null && bike.Exists())
-                Function.Call(Hash.SET_VEHICLE_HANDBRAKE, bike.Handle, false);
-
-            st.Phase = Phase.Idle;
-            st.WheelieAnimPlayed = false;
-            st.WheelieAnimTriggerTime = 0;
-            st.WheelieNeedsRetask = false;
-            CruiseFreestyle(venue, ms, ped, st, now);
-            if (_debug) DrawDebugText(ped, "MEET: Freestyle", Color.Orange);
-        }
-
-        /// <summary>
-        /// Croisière rapide sans destination (TASK_VEHICLE_DRIVE_WANDER) : le motard roule
-        /// en continu à vitesse élevée au lieu de ralentir à l'approche d'un point cible,
-        /// ce qui laisse les wheelies se déclencher en rafales sur la zone de freestyle.
-        /// </summary>
-        private void CruiseFreestyle(MeetingVenue venue, MeetingRiderState ms, Ped ped, RiderState st, int now)
-        {
-            Vehicle bike = ped.CurrentVehicle;
-            if (bike == null || !bike.Exists()) return;
-            WheelieConfig cfg = GetWheelieConfig(st.BikeModel);
-            Function.Call(Hash.TASK_VEHICLE_DRIVE_WANDER,
-                ped.Handle, bike.Handle, cfg.DriveSpeed, cfg.DrivingFlags);
-            ms.NextTaskTime = now + 3500;
-            if (_debug) DrawDebugText(ped, "MEET: cruise", Color.Yellow);
-        }
-
-        private void ChooseFreestylePoint(MeetingVenue venue, MeetingRiderState ms)
-        {
-            // Zone autour du centre du parking.
-            ms.FreestylePoint = venue.Center + RandomOffset(_meetingFreestyleRadiusMin, _meetingFreestyleRadius);
-        }
-
-        private void DriveToFreestylePoint(MeetingVenue venue, MeetingRiderState ms, Ped ped, RiderState st, int now)
-        {
-            // Retour dans la zone si la croisière a dérivé au-delà du rayon autorisé.
-            WheelieConfig cfg = GetWheelieConfig(st.BikeModel);
-            Function.Call(Hash.TASK_VEHICLE_DRIVE_TO_COORD_LONGRANGE,
-                ped.Handle, ped.CurrentVehicle.Handle,
-                ms.FreestylePoint.X, ms.FreestylePoint.Y, ms.FreestylePoint.Z,
-                cfg.DriveSpeed, cfg.DrivingFlags, 3f);
-            ms.NextTaskTime = now + 3500;
-        }
-
-        private void UpdateFreestyleRiding(MeetingVenue venue, MeetingRiderState ms, Ped ped, RiderState st, int now)
-        {
-            Vehicle bike = ped.CurrentVehicle;
-            if (bike == null || !bike.Model.IsBike) return;
-            WheelieConfig cfg = GetWheelieConfig(st.BikeModel, st.WheelieProtected);
-
-            // Re-issue the driving task once a picked-up stunt anim has ended (same
-            // retask rule as ProcessAllRiders, so freestylers do not coast forever).
-            if (st.Phase == Phase.Sustained
-                && st.WheelieNeedsRetask
-                && !string.IsNullOrEmpty(st.LastWheelieAnimDict)
-                && !string.IsNullOrEmpty(st.LastWheelieAnimClip)
-                && now - st.WheelieAnimStartTime >= 500
-                && !Function.Call<bool>(Hash.IS_ENTITY_PLAYING_ANIM,
-                    ped.Handle, st.LastWheelieAnimDict, st.LastWheelieAnimClip, 3))
-            {
-                CruiseFreestyle(venue, ms, ped, st, now);
-                st.WheelieNeedsRetask = false;
-                int nextCooldown = st.WheelieAnimUpperBodyOnly ? 2000 : cfg.StuntCooldown;
-                st.WheelieAnimUpperBodyOnly = false;
-                st.WheelieAnimPlayed = false;
-                st.WheelieAnimTriggerTime = now + nextCooldown;
-            }
-
-            // Si la croisière a dérivé hors de la zone, on revient à un point intérieur,
-            // sinon on garde la vitesse en réémettant la croisière régulièrement.
-            float distCenter = bike.Position.DistanceTo(venue.Center);
-            if (distCenter > _meetingFreestyleRadius)
-            {
-                if (now > ms.NextTaskTime)
-                {
-                    ChooseFreestylePoint(venue, ms);
-                    DriveToFreestylePoint(venue, ms, ped, st, now);
-                }
-            }
-            else if (now > ms.NextTaskTime)
-            {
-                CruiseFreestyle(venue, ms, ped, st, now);
-            }
-
-            // Burst over: ride back to the personal parking spot and hold for the dismount.
-            if (now >= ms.ChangeTime)
-            {
-                st.Phase = Phase.Idle;
-                st.WheelieAnimPlayed = false;
-                st.WheelieAnimTriggerTime = 0;
-                st.WheelieNeedsRetask = false;
-                ms.Phase = MeetingRiderPhase.Paused;
-                DriveToParkingOffset(ms, ped, st, now);
-                if (_debug) DrawDebugText(ped, "MEET: Paused", Color.Gray);
-            }
-        }
-
-        // =========================================================================
         //  Shared helpers
         // =========================================================================
 
         /// <summary>
-        /// Uniform random offset in [min, max] from the origin (squared distance ring).
+        /// Avant un rechargement de la config : on quitte l'édition et on renvoie les meetups
+        /// en cours en formation, car les objets lieux vont être recréés depuis meetings.ini.
         /// </summary>
-        private Vector3 RandomOffset(float min, float max)
+        private void PrepareMeetingsForReload()
         {
-            float ang = (float)(_rnd.NextDouble() * Math.PI * 2);
-            float dist = min + (float)(_rnd.NextDouble() * Math.Max(0f, max - min));
-            return new Vector3((float)Math.Cos(ang) * dist, (float)Math.Sin(ang) * dist, 0f);
+            if (_meetingVenues == null) return;
+            EndMeetingEdit("config reload");
+            HideMeetingMenu();
+            foreach (var venue in _meetingVenues)
+            {
+                if (!venue.ForceActive) continue;
+                LogMeeting($"Meeting {venue.Name}: dismantled for config reload");
+                DismantleVenueMeeting(venue, true);
+            }
         }
 
         private bool IsGroupOnActiveMeeting(string groupName)

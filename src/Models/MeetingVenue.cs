@@ -6,8 +6,8 @@ namespace StreetRiders
     public partial class StreetRidersScript
     {
         /// <summary>
-        /// Point authoré en jeu dans l'éditeur Meetings : un point de parking ou un point
-        /// de cercle. Position + cap sont capturés depuis le joueur.
+        /// Place de parking authorée dans l'éditeur : position + cap capturés sur le joueur
+        /// (ou sur sa moto s'il est dessus).
         /// </summary>
         private class MeetingPoint
         {
@@ -16,26 +16,43 @@ namespace StreetRiders
         }
 
         /// <summary>
-        /// Lieu de rassemblement lié à un groupe existant. Le parking est authoré comme
-        /// UNE LISTE de points (Position + Heading) afin que chaque motard gare la sienne
-        /// exactement à son emplacement, orientée par le cap capturé. Le cercle à pied
-        /// est authoré de la même façon (8 points max) : les motards s'y répartissent et
-        /// regardent vers le centre du cercle. Les motards rouleront aussi en freestyle
-        /// autour de la zone (croisière rapide + rafales de wheelies). Persisté dans
-        /// meetings.ini sous [Venue_NOM] (Group + ParkingPoint{N} + CirclePoint{N}).
+        /// Ligne de freestyle authorée : segment A→B parcouru en allers-retours.
+        /// OffRoad = trajet en ligne droite sans suivre le réseau routier.
+        /// </summary>
+        private class MeetingLine
+        {
+            public Vector3 A;
+            public Vector3 B;
+            public bool OffRoad;
+
+            public Vector3 Middle
+            {
+                get { return (A + B) * 0.5f; }
+            }
+        }
+
+        /// <summary>
+        /// Lieu de rassemblement lié à un groupe existant. Composé de places de parking
+        /// (une par moto), d'un centre de cercle optionnel (les places à pied sont générées
+        /// autour) et de lignes de freestyle. Persisté dans meetings.ini sous [Venue_NOM].
         /// </summary>
         private class MeetingVenue
         {
+            public const int MaxParkingPoints = 24;
+            public const int MaxLines = 8;
+
             public string Name = "";
             public string GroupName = "";
             public List<MeetingPoint> ParkingPoints = new List<MeetingPoint>();
-            public List<MeetingPoint> CirclePoints = new List<MeetingPoint>();
+            public Vector3? CircleCenter;
+            public List<MeetingLine> Lines = new List<MeetingLine>();
 
             // État runtime du meeting (non persisté)
             public int ActiveGroupId = -1;
             public bool ForceActive = false;
+            public int NextScheduleAttempt = 0;
 
-            /// <summary>Centre utilisé pour la matérialisation, le freestyle et le départ : premier point de parking.</summary>
+            /// <summary>Centre utilisé pour la matérialisation et le départ : première place de parking.</summary>
             public Vector3 Center
             {
                 get { return ParkingPoints.Count > 0 ? ParkingPoints[0].Position : Vector3.Zero; }

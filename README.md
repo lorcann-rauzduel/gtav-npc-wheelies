@@ -19,7 +19,7 @@ A GTA V mod that spawns motorcycle gangs who cruise their turf and pull realisti
 - **Police Interaction** — Cops chase riders doing wheelies (Sustained phase only). Persistent pursuit tracking.
 - **Per-Bike Tuning** — Override any physics parameter for individual models with `[Bike_X]` sections.
 - **Natural Rider Support** — Optionally apply wheelie AI to NPC bikers already in traffic.
-- **Biker Meetings** — Scheduled gatherings: a group rides in, each biker parks at his own authored spot (position + heading captured in-game) and aligns to it, riders hang out on foot on authored circle points facing the circle center, chat spontaneously, one rider leans against his bike, others freestyle in fast cruise bursts, then everyone leaves in formation. Venues and their parking/circle points are authored in-game with the MEETINGS menu (F8).
+- **Biker Meetups** — Create a venue in-game (F8), then place parking spots, a circle center and road or off-road freestyle lines right on the ground. A group rides in, parks at the spots, hangs out in a circle or in front of their bikes, takes turns doing wheelie runs on the lines, then leaves in formation. Scheduled by day/hour or started on demand.
 - **5-File Config System** — Settings split by concern. Hot-reload any file with F10.
 
 ---

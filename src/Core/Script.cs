@@ -66,6 +66,7 @@ namespace StreetRiders
 
             UpdateMeetingSystem();
             if (_meetingPool != null) _meetingPool.Process();
+            TickMeetingEditor();
             TickMeetingWheelies();
         }
 
@@ -86,6 +87,7 @@ namespace StreetRiders
 
             if (e.KeyCode == _reloadKey)
             {
+                PrepareMeetingsForReload();
                 LoadConfig();
                 RefreshAllBlips();
                 Notification.PostTicker($"~g~Street Riders: Reloaded! ({_groupConfigs.Count} groups) {(_testMode ? "~y~[TEST MODE]" : "")}", true);
@@ -101,6 +103,10 @@ namespace StreetRiders
             if (_meetingMenuKey != Keys.None && e.KeyCode == _meetingMenuKey)
             {
                 ToggleMeetingMenu();
+            }
+            else if (HandleMeetingEditorKey(e.KeyCode))
+            {
+                return;
             }
 
             // ===== Test Mode Keys =====
@@ -124,6 +130,7 @@ namespace StreetRiders
         private void OnAborted(object sender, EventArgs e)
         {
             // Meetings: reset scheduler state so venues never resurrect post-abort.
+            EndMeetingEdit("script aborted");
             HideMeetingMenu();
             AbortAllMeetings();
 
