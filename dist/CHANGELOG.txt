@@ -10,8 +10,11 @@ Added
   on foot in a circle or in front of their bike, chat, take turns doing wheelie runs on your freestyle lines,
   and leave in formation at the end. Scheduled by day/hour or started any time from the MEETINGS menu (F8).
 * In-world meetup editor: create an empty venue with F8, then place parking spots, the circle center and freestyle
-  lines on the ground (Enter = place, Backspace = delete, E = switch tool, R = road / off-road line; gamepad supported).
+  lines on the ground (Enter = place, Backspace = delete, E / Q = next / previous tool, R = road / off-road line; gamepad supported).
 * Road and off-road freestyle lines, ridden back and forth, two bikers max per line.
+* Single stand spots: one rider stands there, facing the captured direction.
+* Disciplined parking: riders queue behind their spot and park one at a time.
+* Tighter, evenly spaced on-foot circle that stays level next to curbs.
 
 Fixed
 

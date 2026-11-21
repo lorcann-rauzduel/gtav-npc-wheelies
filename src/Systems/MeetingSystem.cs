@@ -350,11 +350,12 @@ namespace StreetRiders
                 MeetingPoint pp = spots[i];
                 ms.ParkingOffset = pp.Position;
                 ms.ParkingHeading = pp.Heading;
+                ms.ApproachPoint = ApproachPointFor(pp.Position, pp.Heading);
                 ms.LastTalkTime = Game.GameTime + _rnd.Next(0, 8000); // désynchro de la parlote
                 Function.Call(Hash.TASK_VEHICLE_DRIVE_TO_COORD_LONGRANGE,
                     ped.Handle, bike.Handle,
-                    ms.ParkingOffset.X, ms.ParkingOffset.Y, ms.ParkingOffset.Z,
-                    cfg.DriveSpeed * 0.6f, cfg.DrivingFlags, 5f);
+                    ms.ApproachPoint.X, ms.ApproachPoint.Y, ms.ApproachPoint.Z,
+                    cfg.DriveSpeed * 0.6f, cfg.DrivingFlags, 2f);
 
                 var state = new RiderState
                 {
@@ -460,6 +461,7 @@ namespace StreetRiders
             LogMeeting($"Meeting {venue.Name}: dismantle depart={depart} riders={(group != null ? group.PedHandles.Count : 0)}");
             venue.ForceActive = false;
             venue.ActiveGroupId = -1;
+            venue.CircleLayoutKey = "";
             if (group == null) return;
 
             int now = Game.GameTime;
@@ -546,6 +548,7 @@ namespace StreetRiders
             {
                 venue.ForceActive = false;
                 venue.ActiveGroupId = -1;
+                venue.CircleLayoutKey = "";
             }
         }
 
@@ -563,8 +566,11 @@ namespace StreetRiders
                 {
                     venue.ForceActive = false;
                     venue.ActiveGroupId = -1;
+                    venue.CircleLayoutKey = "";
                     continue;
                 }
+
+                UpdateCircleLayout(venue, group);
 
                 for (int i = group.PedHandles.Count - 1; i >= 0; i--)
                 {
@@ -586,6 +592,7 @@ namespace StreetRiders
                 {
                     venue.ForceActive = false;
                     venue.ActiveGroupId = -1;
+                    venue.CircleLayoutKey = "";
                 }
             }
         }
