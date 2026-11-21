@@ -11,22 +11,25 @@ namespace StreetRiders
     /// Mode édition au sol d'un lieu de meeting. Le menu est fermé pendant l'édition :
     /// les points du lieu sont dessinés dans le monde et un bandeau d'aide rappelle
     /// l'outil actif. Entrée pose, Retour arrière supprime le point le plus proche,
-    /// E change d'outil, R bascule Route/Hors route, la touche du menu quitte.
+    /// E / Q outil suivant / précédent, R bascule Route/Hors route, la touche du menu quitte.
     /// Chaque action est sauvegardée immédiatement dans meetings.ini.
     /// Aucune entité n'est créée : les marqueurs sont redessinés à chaque frame.
     /// </summary>
     public partial class StreetRidersScript
     {
-        private enum MeetingEditTool { Parking, Circle, Line }
+        private enum MeetingEditTool { Parking, Circle, Stand, Line }
+        private const int MeetingEditToolCount = 4;
 
         private const float MeetingEditDrawDistance = 150f;
         private const float MeetingEditLabelDistance = 40f;
         private const float MeetingEditDeleteRadius = 5f;
         private const float MeetingLineMinLength = 20f;
-        private const float MeetingCircleRadius = 2.5f;
+        private const float MeetingParkingMinSpacing = 1.2f;
+        private const float MeetingCircleDisplayRadius = 1.5f; // rayon indicatif : le vrai suit l'effectif
 
         private static readonly Color EditParkingColor = Color.FromArgb(160, 60, 140, 255);
         private static readonly Color EditCircleColor = Color.FromArgb(90, 255, 210, 40);
+        private static readonly Color EditStandColor = Color.FromArgb(200, 200, 90, 255);
         private static readonly Color EditRoadLineColor = Color.FromArgb(220, 60, 220, 90);
         private static readonly Color EditOffRoadLineColor = Color.FromArgb(220, 255, 140, 30);
         private static readonly Color EditPendingColor = Color.FromArgb(200, 255, 255, 255);
@@ -83,7 +86,8 @@ namespace StreetRiders
             {
                 case Keys.Return: PlaceWithActiveTool(); return true;
                 case Keys.Back: DeleteNearestEditPoint(); return true;
-                case Keys.E: CycleEditTool(); return true;
+                case Keys.E: CycleEditTool(1); return true;
+                case Keys.Q: CycleEditTool(-1); return true;
                 case Keys.R: ToggleNearestLineSurface(); return true;
                 default: return false;
             }
@@ -113,9 +117,9 @@ namespace StreetRiders
         //  Actions
         // =========================================================================
 
-        private void CycleEditTool()
+        private void CycleEditTool(int direction)
         {
-            _editTool = (MeetingEditTool)(((int)_editTool + 1) % 3);
+            _editTool = (MeetingEditTool)(((int)_editTool + direction + MeetingEditToolCount) % MeetingEditToolCount);
             _editLineStart = null;
             LogMeeting($"Edit: tool -> {_editTool}");
         }
@@ -133,6 +137,14 @@ namespace StreetRiders
                         EditFeedback(T($"~r~{MeetingVenue.MaxParkingPoints} places max", $"~r~{MeetingVenue.MaxParkingPoints} spots max"));
                         return;
                     }
+                    int crowded = NearestParkingIndex(venue, here.Position, MeetingParkingMinSpacing);
+                    if (crowded >= 0)
+                    {
+                        EditFeedback(T($"~o~Trop près de P{crowded + 1} ({MeetingParkingMinSpacing:0.0} m min)",
+                            $"~o~Too close to P{crowded + 1} ({MeetingParkingMinSpacing:0.0} m min)"));
+                        LogMeeting($"Edit: parking refused, too close to P{crowded + 1}");
+                        return;
+                    }
                     venue.ParkingPoints.Add(here);
                     SaveEdit(T($"~g~Place P{venue.ParkingPoints.Count} posée", $"~g~Spot P{venue.ParkingPoints.Count} placed"),
                         $"parking +1 at {here.Position} h={here.Heading:0}");
@@ -145,10 +157,33 @@ namespace StreetRiders
                         $"circle center at {here.Position}");
                     break;
 
+                case MeetingEditTool.Stand:
+                    if (venue.StandSpots.Count >= MeetingVenue.MaxStandSpots)
+                    {
+                        EditFeedback(T($"~r~{MeetingVenue.MaxStandSpots} spots max", $"~r~{MeetingVenue.MaxStandSpots} spots max"));
+                        return;
+                    }
+                    venue.StandSpots.Add(here);
+                    SaveEdit(T($"~g~Spot S{venue.StandSpots.Count} posé", $"~g~Spot S{venue.StandSpots.Count} placed"),
+                        $"stand spot +1 at {here.Position} h={here.Heading:0}");
+                    break;
+
                 case MeetingEditTool.Line:
                     PlaceLinePoint(venue, here.Position);
                     break;
             }
+        }
+
+        private static int NearestParkingIndex(MeetingVenue venue, Vector3 position, float maxDistance)
+        {
+            int index = -1;
+            float best = maxDistance;
+            for (int i = 0; i < venue.ParkingPoints.Count; i++)
+            {
+                float d = position.DistanceTo2D(venue.ParkingPoints[i].Position);
+                if (d < best) { best = d; index = i; }
+            }
+            return index;
         }
 
         private void PlaceLinePoint(MeetingVenue venue, Vector3 position)
@@ -196,26 +231,37 @@ namespace StreetRiders
             }
 
             float best = MeetingEditDeleteRadius;
-            int parkingIndex = -1, lineIndex = -1;
+            int parkingIndex = -1, standIndex = -1, lineIndex = -1;
             bool circle = false;
 
             for (int i = 0; i < venue.ParkingPoints.Count; i++)
             {
                 float d = player.DistanceTo(venue.ParkingPoints[i].Position);
-                if (d < best) { best = d; parkingIndex = i; lineIndex = -1; circle = false; }
+                if (d < best) { best = d; parkingIndex = i; standIndex = -1; lineIndex = -1; circle = false; }
             }
             if (venue.CircleCenter.HasValue)
             {
                 float d = player.DistanceTo(venue.CircleCenter.Value);
-                if (d < best) { best = d; parkingIndex = -1; lineIndex = -1; circle = true; }
+                if (d < best) { best = d; parkingIndex = -1; standIndex = -1; lineIndex = -1; circle = true; }
+            }
+            for (int i = 0; i < venue.StandSpots.Count; i++)
+            {
+                float d = player.DistanceTo(venue.StandSpots[i].Position);
+                if (d < best) { best = d; parkingIndex = -1; standIndex = i; lineIndex = -1; circle = false; }
             }
             for (int i = 0; i < venue.Lines.Count; i++)
             {
                 float d = DistanceToSegment(player, venue.Lines[i].A, venue.Lines[i].B);
-                if (d < best) { best = d; parkingIndex = -1; lineIndex = i; circle = false; }
+                if (d < best) { best = d; parkingIndex = -1; standIndex = -1; lineIndex = i; circle = false; }
             }
 
-            if (parkingIndex >= 0)
+            if (standIndex >= 0)
+            {
+                venue.StandSpots.RemoveAt(standIndex);
+                SaveEdit(T($"~o~Spot S{standIndex + 1} supprimé", $"~o~Spot S{standIndex + 1} deleted"),
+                    $"stand spot S{standIndex + 1} deleted");
+            }
+            else if (parkingIndex >= 0)
             {
                 venue.ParkingPoints.RemoveAt(parkingIndex);
                 SaveEdit(T($"~o~Place P{parkingIndex + 1} supprimée", $"~o~Spot P{parkingIndex + 1} deleted"),
@@ -315,12 +361,26 @@ namespace StreetRiders
                 float distance = player.DistanceTo(venue.CircleCenter.Value);
                 if (distance < MeetingEditDrawDistance)
                 {
-                    float diameter = MeetingCircleRadius * 2f;
+                    float diameter = MeetingCircleDisplayRadius * 2f;
                     Vector3 ground = GroundAt(venue.CircleCenter.Value);
                     World.DrawMarker(MarkerType.Cylinder, ground, Vector3.Zero, Vector3.Zero,
                         new Vector3(diameter, diameter, 0.3f), EditCircleColor);
                     DrawEditLabel(ground, distance, T("CERCLE", "CIRCLE"), Color.FromArgb(255, EditCircleColor));
                 }
+            }
+
+            for (int i = 0; i < venue.StandSpots.Count; i++)
+            {
+                MeetingPoint s = venue.StandSpots[i];
+                float distance = player.DistanceTo(s.Position);
+                if (distance > MeetingEditDrawDistance) continue;
+                Vector3 ground = GroundAt(s.Position);
+                World.DrawMarker(MarkerType.Cylinder, ground, Vector3.Zero, Vector3.Zero,
+                    new Vector3(0.5f, 0.5f, 1.0f), EditStandColor);
+                // Le trait indique où le motard regardera.
+                Vector3 tip = ground + GetHeadingDir(s.Heading) * 1.0f + new Vector3(0f, 0f, 1.0f);
+                World.DrawLine(ground + new Vector3(0f, 0f, 1.0f), tip, EditStandColor);
+                DrawEditLabel(ground, distance, "S" + (i + 1), EditStandColor);
             }
 
             for (int i = 0; i < venue.Lines.Count; i++)

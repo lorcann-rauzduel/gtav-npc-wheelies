@@ -234,8 +234,8 @@ namespace StreetRiders
                 ? T("0 (pas de freestyle)", "0 (no freestyle)")
                 : venue.Lines.Count.ToString();
             var state = new NativeItem(
-                T($"Places : {venue.ParkingPoints.Count}   Cercle : {circle}   Lignes : {lines}",
-                  $"Spots: {venue.ParkingPoints.Count}   Circle: {circle}   Lines: {lines}"),
+                T($"Places : {venue.ParkingPoints.Count}   Cercle : {circle}   Spots : {venue.StandSpots.Count}   Lignes : {lines}",
+                  $"Parking: {venue.ParkingPoints.Count}   Circle: {circle}   Stand spots: {venue.StandSpots.Count}   Lines: {lines}"),
                 StateHint(venue));
             state.Enabled = false;
             sub.Add(state);

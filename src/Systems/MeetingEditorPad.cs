@@ -5,7 +5,7 @@ namespace StreetRiders
     /// <summary>
     /// Commandes manette du mode édition (le clavier passe par HandleMeetingEditorKey).
     /// Lues via les contrôles GTA, ce qui garde les icônes de la barre cohérentes :
-    ///   A poser · B supprimer / annuler · RB outil suivant · X route / hors route · croix bas terminer.
+    ///   A poser · B supprimer / annuler · RB / LB outil suivant / précédent · X route / hors route · croix bas terminer.
     /// Y (Enter / VehicleExit) reste libre pour monter et descendre de la moto.
     /// </summary>
     public partial class StreetRidersScript
@@ -13,6 +13,7 @@ namespace StreetRiders
         private const Control PadPlace = Control.FrontendAccept;
         private const Control PadDelete = Control.FrontendCancel;
         private const Control PadNextTool = Control.FrontendRb;
+        private const Control PadPrevTool = Control.FrontendLb;
         private const Control PadSurface = Control.FrontendX;
         private const Control PadFinish = Control.FrontendDown;
 
@@ -21,7 +22,8 @@ namespace StreetRiders
         {
             Control.Sprint, Control.Jump, Control.Cover, Control.MeleeAttackLight,
             Control.MeleeAttackAlternate, Control.Reload, Control.Detonate, Control.CharacterWheel,
-            Control.VehicleHandbrake, Control.VehicleDuck, Control.VehicleHeadlight, Control.VehicleCinCam
+            Control.SelectWeapon, Control.VehicleHandbrake, Control.VehicleDuck, Control.VehicleHeadlight,
+            Control.VehicleCinCam, Control.VehicleRadioWheel
         };
 
         private static bool IsUsingGamepad
@@ -43,7 +45,8 @@ namespace StreetRiders
 
             if (Game.IsControlJustPressed(PadPlace)) PlaceWithActiveTool();
             else if (Game.IsControlJustPressed(PadDelete)) DeleteNearestEditPoint();
-            else if (Game.IsControlJustPressed(PadNextTool)) CycleEditTool();
+            else if (Game.IsControlJustPressed(PadNextTool)) CycleEditTool(1);
+            else if (Game.IsControlJustPressed(PadPrevTool)) CycleEditTool(-1);
             else if (Game.IsControlJustPressed(PadSurface)) ToggleNearestLineSurface();
             else if (Game.IsControlJustPressed(PadFinish)) EndMeetingEdit("pad finish");
         }

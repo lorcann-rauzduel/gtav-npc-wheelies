@@ -78,7 +78,9 @@ namespace StreetRiders
             bool pad = IsUsingGamepad;
             buttons.Clear();
             buttons.Add(new InstructionalButton(T("Poser", "Place"), PadPlace));
-            buttons.Add(new InstructionalButton(T("Outil suivant", "Next tool"), pad ? PadNextTool : Control.Context));
+            // FrontendRb / FrontendLb = E / Q au clavier, RB / LB à la manette.
+            buttons.Add(new InstructionalButton(T("Outil suivant", "Next tool"), PadNextTool));
+            buttons.Add(new InstructionalButton(T("Outil précédent", "Previous tool"), PadPrevTool));
             if (ShowsSurfaceToggle())
                 buttons.Add(new InstructionalButton(T("Route / hors route", "Road / off-road"), pad ? PadSurface : Control.Reload));
             buttons.Add(new InstructionalButton(DeleteLabel(), PadDelete));
@@ -103,7 +105,7 @@ namespace StreetRiders
         {
             bool pad = IsUsingGamepad;
             string keys = (pad ? "A" : T("Entrée", "Enter")) + ": " + T("Poser", "Place")
-                + " · " + (pad ? "RB" : "E") + ": " + T("Outil suivant", "Next tool");
+                + " · " + (pad ? "RB / LB" : "E / Q") + ": " + T("Outil suivant / précédent", "Next / previous tool");
             if (ShowsSurfaceToggle())
                 keys += " · " + (pad ? "X" : "R") + ": " + T("Route / hors route", "Road / off-road");
             keys += " · " + (pad ? "B" : T("Retour", "Backspace")) + ": " + DeleteLabel()
@@ -125,6 +127,11 @@ namespace StreetRiders
                     tool = T("CERCLE", "CIRCLE");
                     instruction = T("Place-toi au centre du cercle à pied.", "Stand at the center of the on-foot circle.");
                     break;
+                case MeetingEditTool.Stand:
+                    tool = "SPOT";
+                    instruction = T("Mets-toi où un motard doit se tenir, tourné vers où il regardera.",
+                        "Stand where a rider should stand, facing where they will look.");
+                    break;
                 default:
                     tool = T("LIGNE", "LINE");
                     instruction = _editLineStart.HasValue
@@ -132,7 +139,7 @@ namespace StreetRiders
                         : T("Va au début de la ligne.", "Go to the start of the line.");
                     break;
             }
-            string text = $"~y~{tool}~s~ ({(int)_editTool + 1}/3) · {_editVenue.Name}~n~{instruction}";
+            string text = $"~y~{tool}~s~ ({(int)_editTool + 1}/{MeetingEditToolCount}) · {_editVenue.Name}~n~{instruction}";
             return _editButtonsFallback ? text + "~n~" + EditKeysText() : text;
         }
     }

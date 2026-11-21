@@ -13,6 +13,7 @@ namespace StreetRiders
     ///   Anchor           = x,y,z (centre du lieu posé à la création)
     ///   ParkingPoint1..N = x,y,z,cap
     ///   CircleCenter     = x,y,z (optionnel)
+    ///   StandSpot1..N    = x,y,z,cap (un motard à pied par spot)
     ///   Line1..N         = ax,ay,az,bx,by,bz,road|offroad
     /// Les anciens CirclePointN (schéma WIP) sont migrés en CircleCenter = leur moyenne.
     /// </summary>
@@ -47,6 +48,14 @@ namespace StreetRiders
                 else
                     venue.CircleCenter = ReadLegacyCircleCenter(meetingsPath, section);
 
+                for (int i = 1; i <= MeetingVenue.MaxStandSpots; i++)
+                {
+                    if (!ParseVenuePosition(GetIniString(meetingsPath, section, "StandSpot" + i, ""),
+                        out Vector3 sp, out float sh))
+                        break;
+                    venue.StandSpots.Add(new MeetingPoint { Position = sp, Heading = sh });
+                }
+
                 for (int i = 1; i <= MeetingVenue.MaxLines; i++)
                 {
                     MeetingLine line;
@@ -79,7 +88,7 @@ namespace StreetRiders
                     continue;
                 }
                 _meetingVenues.Add(venue);
-                LogMeeting($"Load: {venue.Name} group={venue.GroupName} parking={venue.ParkingPoints.Count} circle={(venue.CircleCenter.HasValue ? "yes" : "no")} lines={venue.Lines.Count}");
+                LogMeeting($"Load: {venue.Name} group={venue.GroupName} parking={venue.ParkingPoints.Count} circle={(venue.CircleCenter.HasValue ? "yes" : "no")} standspots={venue.StandSpots.Count} lines={venue.Lines.Count}");
             }
         }
 
@@ -129,6 +138,19 @@ namespace StreetRiders
                 DeleteIniValue(file, section, "CircleCenter");
             for (int i = 1; i <= LegacyCirclePointCount; i++)
                 DeleteIniValue(file, section, "CirclePoint" + i);
+
+            for (int i = 1; i <= MeetingVenue.MaxStandSpots; i++)
+            {
+                if (i <= venue.StandSpots.Count)
+                {
+                    MeetingPoint s = venue.StandSpots[i - 1];
+                    WriteIniValue(file, section, "StandSpot" + i, SerializeVenuePosition(s.Position, s.Heading));
+                }
+                else
+                {
+                    DeleteIniValue(file, section, "StandSpot" + i);
+                }
+            }
 
             for (int i = 1; i <= MeetingVenue.MaxLines; i++)
             {

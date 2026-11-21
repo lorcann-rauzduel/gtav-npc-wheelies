@@ -47,11 +47,13 @@ namespace StreetRiders
         {
             public const int MaxParkingPoints = 24;
             public const int MaxLines = 8;
+            public const int MaxStandSpots = 16;
 
             public string Name = "";
             public string GroupName = "";
             public List<MeetingPoint> ParkingPoints = new List<MeetingPoint>();
             public Vector3? CircleCenter;
+            public List<MeetingPoint> StandSpots = new List<MeetingPoint>(); // un motard à pied par spot
             public List<MeetingLine> Lines = new List<MeetingLine>();
 
             // Réglages propres au lieu ; null = valeur par défaut de [Meetings].
@@ -63,6 +65,7 @@ namespace StreetRiders
             public int ActiveGroupId = -1;
             public bool ForceActive = false;
             public int NextScheduleAttempt = 0;
+            public string CircleLayoutKey = ""; // membres du cercle lors du dernier placement
 
             /// <summary>
             /// Position du joueur à la création : centre de repli tant que le lieu est vide.
@@ -81,6 +84,7 @@ namespace StreetRiders
                     int count = 0;
                     foreach (MeetingPoint p in ParkingPoints) { sum += p.Position; count++; }
                     if (CircleCenter.HasValue) { sum += CircleCenter.Value; count++; }
+                    foreach (MeetingPoint s in StandSpots) { sum += s.Position; count++; }
                     foreach (MeetingLine line in Lines) { sum += line.A + line.B; count += 2; }
                     return count > 0 ? sum / count : Anchor;
                 }
