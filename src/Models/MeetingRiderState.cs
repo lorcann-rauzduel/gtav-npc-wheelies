@@ -40,6 +40,7 @@ namespace StreetRiders
             public int NearSpotSince = 0;        // instant d'entrée près de la cible courante (0 = loin)
             public int WaitSince = 0;            // instant d'entrée dans la file de stationnement
             public int ParkStartTime = 0;        // début de la manœuvre finale
+            public float SpeedCap = 0f;          // vitesse max imposée à l'approche (0 = aucune)
 
             public MeetingOnFootMode OnFootMode = MeetingOnFootMode.AtBike;
             public int CircleSlot = -1;          // rang dans le cercle (-1 = hors cercle)

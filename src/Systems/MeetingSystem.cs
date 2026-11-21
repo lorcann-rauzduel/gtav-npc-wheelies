@@ -486,6 +486,7 @@ namespace StreetRiders
                     Function.Call(Hash.SET_PED_CAN_BE_KNOCKED_OFF_VEHICLE, ped.Handle, 0);
                     st.WheelieProtected = false;
                 }
+                if (st.MeetingState != null) ReleaseMeetingSpeedCap(st.MeetingState, GetMyBike(st), st);
                 st.MeetingState = null;
 
                 if (ped.IsInVehicle())

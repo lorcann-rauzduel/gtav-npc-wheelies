@@ -1,3 +1,4 @@
+using System;
 using GTA;
 using GTA.Native;
 using GTA.Math;
@@ -16,7 +17,11 @@ namespace StreetRiders
         private const float MeetingApproachReach = 3.5f;
         private const float MeetingApproachMaxSpeed = 5f;
         private const float MeetingParkCreepSpeed = 2.5f;
-        private const float MeetingParkFinalReach = 1.2f;
+        private const float MeetingParkFinalReach = 1.8f;
+        private const float MeetingBrakeZone = 45f;   // en deçà : allure réduite
+        private const float MeetingBrakeSpeed = 8f;
+        private const float MeetingSlowZone = 18f;    // en deçà : allure de manœuvre
+        private const float MeetingSlowSpeed = 4f;
         private const int MeetingParkTimeoutMs = 15000;
         private const float MeetingParkNearZone = 12f;
         private const int MeetingParkStuckMs = 20000;
@@ -31,15 +36,50 @@ namespace StreetRiders
             Vehicle bike = ped.CurrentVehicle;
             if (bike == null || !bike.Exists()) return;
             WheelieConfig cfg = GetWheelieConfig(st.BikeModel);
+            float speed = cfg.DriveSpeed * 0.6f;
+            if (ms.SpeedCap > 0f && ms.SpeedCap < speed) speed = ms.SpeedCap;
             Function.Call(Hash.TASK_VEHICLE_DRIVE_TO_COORD_LONGRANGE,
                 ped.Handle, bike.Handle, ms.ApproachPoint.X, ms.ApproachPoint.Y, ms.ApproachPoint.Z,
-                cfg.DriveSpeed * 0.6f, cfg.DrivingFlags, 2f);
+                speed, cfg.DrivingFlags, 2f);
             ms.NextTaskTime = now + 4000;
+        }
+
+        /// <summary>
+        /// Ralentissement progressif près du lieu : l'IA freine trop tard d'elle-même, on plafonne
+        /// donc la vitesse de la moto (SET_ENTITY_MAX_SPEED) et celle de la tâche de conduite.
+        /// </summary>
+        private void ApplyMeetingSpeedCap(MeetingRiderState ms, Ped ped, Vehicle bike, float cap, string reason)
+        {
+            if (Math.Abs(cap - ms.SpeedCap) < 0.1f) return;
+            ms.SpeedCap = cap;
+            Function.Call(Hash.SET_ENTITY_MAX_SPEED, bike.Handle, cap);
+            Function.Call(Hash.SET_DRIVE_TASK_CRUISE_SPEED, ped.Handle, cap);
+            LogMeeting($"Rider {ped.Handle}: speed cap {cap:0.0} m/s ({reason})");
+        }
+
+        /// <summary>Rend à la moto sa vitesse normale (départ en freestyle, fin du meeting).</summary>
+        private void ReleaseMeetingSpeedCap(MeetingRiderState ms, Vehicle bike, RiderState st)
+        {
+            if (ms.SpeedCap <= 0f || bike == null || !bike.Exists()) return;
+            ms.SpeedCap = 0f;
+            Function.Call(Hash.SET_ENTITY_MAX_SPEED, bike.Handle, GetWheelieConfig(st.BikeModel).MaxSpeed);
+        }
+
+        private float ApproachSpeedCap(float distance)
+        {
+            if (distance < MeetingSlowZone) return MeetingSlowSpeed;
+            if (distance < MeetingBrakeZone) return MeetingBrakeSpeed;
+            return 0f;
         }
 
         /// <summary>Arriving / Paused : rouler jusqu'au point d'approche puis prendre la file.</summary>
         private void UpdateApproach(ActiveGroup group, MeetingRiderState ms, Ped ped, RiderState st, Vehicle bike, int now)
         {
+            float approachDistance = bike.Position.DistanceTo2D(ms.ApproachPoint);
+            float cap = ApproachSpeedCap(approachDistance);
+            if (cap > 0f && (ms.SpeedCap <= 0f || cap < ms.SpeedCap))
+                ApplyMeetingSpeedCap(ms, ped, bike, cap, $"approach dist={approachDistance:0}m");
+
             if (HasReachedApproach(ms, bike, now, out string detail))
             {
                 ms.WaitSince = now;
@@ -87,6 +127,7 @@ namespace StreetRiders
             Function.Call(Hash.SET_VEHICLE_HANDBRAKE, bike.Handle, false);
             ms.ParkStartTime = now;
             SetMeetingPhase(ms, ped, MeetingRiderPhase.Parking, $"P{ms.ParkingPointIndex + 1} {reason}");
+            ApplyMeetingSpeedCap(ms, ped, bike, MeetingParkCreepSpeed, "final park");
             CreepToSpot(ms, ped, bike, now);
         }
 

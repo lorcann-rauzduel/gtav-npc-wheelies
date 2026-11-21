@@ -218,6 +218,7 @@ namespace StreetRiders
             }
 
             Function.Call(Hash.SET_VEHICLE_HANDBRAKE, bike.Handle, false);
+            ReleaseMeetingSpeedCap(ms, bike, st);
             ResetMeetingWheelie(st);
             MeetingLine line = venue.Lines[ms.LineIndex];
             // Il rejoint d'abord le bout le plus proche, puis enchaîne les allers-retours.
