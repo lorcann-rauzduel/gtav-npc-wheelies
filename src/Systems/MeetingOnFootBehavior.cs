@@ -20,6 +20,7 @@ namespace StreetRiders
         private const float MeetingCircleMinRadius = 0.9f;
         private const float MeetingCircleLevelTolerance = 0.25f;
         private const float MeetingHangoutMoveThreshold = 0.3f;
+        private const float MeetingPedRootOffset = 1f; // sol -> racine du ped attendue par le scénario
 
         // Poids du tirage de rôle à pied (seuls les rôles disponibles participent).
         private const int MeetingCircleWeight = 55;
@@ -151,7 +152,9 @@ namespace StreetRiders
                 Vector3 ground = LevelCircleSlot(center, offset, out bool pulledIn);
                 if (pulledIn) leveled++;
 
-                Vector3 point = StandPoint(ground);
+                // Déjà au sol : on ajoute directement le décalage racine (re-sonder le sol depuis
+                // le sol peut échouer et laisser le ped enfoncé à moitié).
+                Vector3 point = ground + new Vector3(0f, 0f, MeetingPedRootOffset);
                 ms.CircleSlot = i;
                 ms.HangoutHeading = HeadingTowards(center - ground);
                 if (point.DistanceTo(ms.HangoutPoint) > MeetingHangoutMoveThreshold)
@@ -199,7 +202,7 @@ namespace StreetRiders
         private static Vector3 StandPoint(Vector3 position)
         {
             Vector3 ground = GroundAt(position);
-            return ground == position ? position : ground + new Vector3(0f, 0f, 1f);
+            return ground == position ? position : ground + new Vector3(0f, 0f, MeetingPedRootOffset);
         }
 
         private static float HeadingTowards(Vector3 direction)
