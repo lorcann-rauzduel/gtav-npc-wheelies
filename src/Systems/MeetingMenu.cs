@@ -1,4 +1,5 @@
 using System.Linq;
+using GTA;
 using GTA.UI;
 using LemonUI;
 using LemonUI.Menus;
@@ -69,8 +70,8 @@ namespace StreetRiders
         {
             var createItem = new NativeItem(
                 T("+ Nouveau lieu ici", "+ New venue here"),
-                T("Pose une 1re place de parking ici puis ouvre la modification au sol.",
-                  "Places a first parking spot here, then opens on-ground editing."));
+                T("Enregistre ta position comme centre du lieu puis ouvre la modification au sol.",
+                  "Saves your position as the venue center, then opens on-ground editing."));
             createItem.Activated += (s, e) => CreateVenue();
             menu.Add(createItem);
 
@@ -123,10 +124,15 @@ namespace StreetRiders
                 return;
             }
 
+            bool hasSpots = venue.ParkingPoints.Count > 0;
             var startItem = new NativeItem(
                 T("Lancer le meetup maintenant", "Start the meetup now"),
-                T("Le groupe arrive, se gare et s'installe, même hors horaires.",
-                  "The group rides in, parks and settles, even off-schedule."));
+                hasSpots
+                    ? T("Le groupe arrive, se gare et s'installe, même hors horaires.",
+                        "The group rides in, parks and settles, even off-schedule.")
+                    : T("Indisponible : pose au moins une place via Modifier au sol.",
+                        "Unavailable: place at least one spot with Edit on the ground."));
+            startItem.Enabled = hasSpots;
             startItem.Activated += (s, e) => TryStartVenue(venue);
             sub.Add(startItem);
         }
@@ -239,6 +245,9 @@ namespace StreetRiders
 
         private string StateHint(MeetingVenue venue)
         {
+            if (venue.ParkingPoints.Count == 0)
+                return T("Aucune place : pose-en via Modifier au sol (outil Parking).",
+                         "No spot yet: place some with Edit on the ground (Parking tool).");
             if (!venue.CircleCenter.HasValue && venue.Lines.Count == 0)
                 return T("Sans cercle ni ligne, ils restent devant leur moto. Ajoute-les via Modifier au sol.",
                          "No circle or line: riders stay by their bikes. Add them with Edit on the ground.");
@@ -267,7 +276,7 @@ namespace StreetRiders
                 Name = NextVenueName(),
                 GroupName = _groupConfigs.Count > 0 ? _groupConfigs[0].Name : ""
             };
-            venue.ParkingPoints.Add(CapturePoint());
+            venue.Anchor = Game.Player.Character.Position;
             _meetingVenues.Add(venue);
             SaveVenueToIni(venue);
             LogMeeting($"Menu: created {venue.Name} group={venue.GroupName} at {venue.Center}");

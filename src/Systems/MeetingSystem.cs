@@ -187,6 +187,12 @@ namespace StreetRiders
                 return FailVenueStart(venue, forced, $"group '{venue.GroupName}' missing", T($"groupe '{venue.GroupName}' introuvable dans groups.ini", $"group '{venue.GroupName}' not found in groups.ini"));
             }
 
+            if (venue.ParkingPoints.Count == 0)
+            {
+                return FailVenueStart(venue, forced, "no parking spot",
+                    T("aucune place de parking : pose-en via Modifier au sol", "no parking spot: place some with Edit on the ground"));
+            }
+
             Vector3 venueCenter = MeetingCenter(venue);
             Vector3 spawnPos;
             float spawnHeading;

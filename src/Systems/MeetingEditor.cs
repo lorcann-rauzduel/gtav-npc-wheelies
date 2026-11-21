@@ -101,7 +101,7 @@ namespace StreetRiders
             }
 
             DrawEditVenue(_editVenue);
-            GTA.UI.Screen.ShowHelpTextThisFrame(EditHelpText(), false);
+            DrawEditHud();
         }
 
         // =========================================================================
@@ -212,12 +212,6 @@ namespace StreetRiders
 
             if (parkingIndex >= 0)
             {
-                if (venue.ParkingPoints.Count <= 1)
-                {
-                    EditFeedback(T("~o~Un lieu garde au moins une place · supprime le lieu via le menu",
-                        "~o~A venue keeps at least one spot · delete the venue from the menu"));
-                    return;
-                }
                 venue.ParkingPoints.RemoveAt(parkingIndex);
                 SaveEdit(T($"~o~Place P{parkingIndex + 1} supprimée", $"~o~Spot P{parkingIndex + 1} deleted"),
                     $"parking P{parkingIndex + 1} deleted");
@@ -297,6 +291,15 @@ namespace StreetRiders
         {
             Vector3 player = Game.Player.Character.Position;
 
+            float anchorDistance = player.DistanceTo(venue.Anchor);
+            if (anchorDistance < MeetingEditDrawDistance)
+            {
+                Vector3 anchor = GroundAt(venue.Anchor);
+                World.DrawMarker(MarkerType.Cylinder, anchor, Vector3.Zero, Vector3.Zero,
+                    new Vector3(0.4f, 0.4f, 2.0f), EditPendingColor);
+                DrawEditLabel(anchor, anchorDistance, T("CENTRE DU LIEU", "VENUE CENTER"), EditPendingColor);
+            }
+
             for (int i = 0; i < venue.ParkingPoints.Count; i++)
             {
                 MeetingPoint p = venue.ParkingPoints[i];
@@ -367,50 +370,6 @@ namespace StreetRiders
             if (!World.GetGroundHeight(position + new Vector3(0f, 0f, 1.5f), out ground, GetGroundHeightMode.Normal))
                 return position;
             return new Vector3(position.X, position.Y, ground);
-        }
-
-        /// <summary>
-        /// Bandeau : les 3 outils (l'actif en jaune), une consigne pour l'outil actif, puis les touches.
-        /// </summary>
-        private string EditHelpText()
-        {
-            string tools = string.Join("   ", new[]
-            {
-                ToolLabel(MeetingEditTool.Parking, T("PARKING", "PARKING")),
-                ToolLabel(MeetingEditTool.Circle, T("CERCLE", "CIRCLE")),
-                ToolLabel(MeetingEditTool.Line, T("LIGNE", "LINE"))
-            });
-
-            string instruction;
-            switch (_editTool)
-            {
-                case MeetingEditTool.Parking:
-                    instruction = T("> Gare-toi où la moto doit aller, puis Entrée",
-                                    "> Park where the bike should go, then Enter");
-                    break;
-                case MeetingEditTool.Circle:
-                    instruction = _editVenue.CircleCenter.HasValue
-                        ? T("> Place-toi au nouveau centre du cercle, puis Entrée", "> Stand at the new circle center, then Enter")
-                        : T("> Place-toi au centre du cercle à pied, puis Entrée", "> Stand at the on-foot circle center, then Enter");
-                    break;
-                default:
-                    instruction = _editLineStart.HasValue
-                        ? T("> Va à la fin de la ligne, puis Entrée", "> Go to the end of the line, then Enter")
-                        : T("> Va au début de la ligne, puis Entrée~n~R : route / hors route (ligne proche)",
-                            "> Go to the start of the line, then Enter~n~R: road / off-road (nearest line)");
-                    break;
-            }
-
-            return $"{T("ÉDITION", "EDITING")} · {_editVenue.Name}~n~"
-                + $"{T("Outil", "Tool")} : {tools}~n~"
-                + $"{instruction}~n~"
-                + $"{T("Entrée poser · E changer d'outil", "Enter place · E switch tool")}~n~"
-                + $"{T("Retour supprimer", "Backspace delete")} · {_meetingMenuKey} {T("terminer", "finish")}";
-        }
-
-        private string ToolLabel(MeetingEditTool tool, string label)
-        {
-            return tool == _editTool ? $"~y~[{label}]~s~" : label;
         }
 
         private static float DistanceToSegment(Vector3 p, Vector3 a, Vector3 b)

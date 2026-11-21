@@ -64,10 +64,15 @@ namespace StreetRiders
             public bool ForceActive = false;
             public int NextScheduleAttempt = 0;
 
-            /// <summary>Centre utilisé pour la matérialisation et le départ : première place de parking.</summary>
+            /// <summary>
+            /// Ancre du lieu, posée à la création : sert à la matérialisation à l'approche
+            /// du joueur, au point d'arrivée du convoi et au départ en formation.
+            /// </summary>
+            public Vector3 Anchor;
+
             public Vector3 Center
             {
-                get { return ParkingPoints.Count > 0 ? ParkingPoints[0].Position : Vector3.Zero; }
+                get { return Anchor; }
             }
         }
     }

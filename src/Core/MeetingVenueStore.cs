@@ -10,6 +10,7 @@ namespace StreetRiders
     /// <summary>
     /// Persistance des lieux de meetings dans meetings.ini, sections [Venue_NOM] :
     ///   Group            = groupe de groups.ini
+    ///   Anchor           = x,y,z (centre du lieu posé à la création)
     ///   ParkingPoint1..N = x,y,z,cap
     ///   CircleCenter     = x,y,z (optionnel)
     ///   Line1..N         = ax,ay,az,bx,by,bz,road|offroad
@@ -63,9 +64,18 @@ namespace StreetRiders
                 }
                 venue.ExtraRiders = ParseExtraRiders(GetIniString(meetingsPath, section, "ExtraRiders", ""));
 
-                if (venue.ParkingPoints.Count == 0)
+                if (ParseVenuePosition(GetIniString(meetingsPath, section, "Anchor", ""), out Vector3 anchor, out _))
                 {
-                    LogMeeting($"Load: {section} ignored (no parking point)");
+                    venue.Anchor = anchor;
+                }
+                else if (venue.ParkingPoints.Count > 0)
+                {
+                    // Lieux créés avant l'ancre : la première place servait de centre.
+                    venue.Anchor = venue.ParkingPoints[0].Position;
+                }
+                else
+                {
+                    LogMeeting($"Load: {section} ignored (no anchor and no parking spot)");
                     continue;
                 }
                 _meetingVenues.Add(venue);
@@ -97,6 +107,7 @@ namespace StreetRiders
 
             string section = VenueSection(venue);
             WriteIniValue(file, section, "Group", venue.GroupName);
+            WriteIniValue(file, section, "Anchor", SerializeVector(venue.Anchor));
             DeleteIniValue(file, section, "Position");
 
             for (int i = 1; i <= MeetingVenue.MaxParkingPoints; i++)
