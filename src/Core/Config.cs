@@ -21,6 +21,11 @@ namespace StreetRiders
             string section, string key, string defaultValue,
             StringBuilder retVal, int size, string filePath);
 
+        // Tampon char[] : la liste des sections est séparée par des '\0', qu'un StringBuilder tronquerait.
+        [DllImport("kernel32", CharSet = CharSet.Unicode)]
+        private static extern int GetPrivateProfileSectionNames(
+            char[] retVal, int size, string filePath);
+
         [DllImport("kernel32", CharSet = CharSet.Unicode)]
         private static extern bool WritePrivateProfileString(
             string section, string key, string value, string filePath);
@@ -230,12 +235,11 @@ namespace StreetRiders
 
         private List<string> GetIniSections(string file)
         {
-            // Pass a null section to enumerate every section of the INI file.
-            var sb = new StringBuilder(8192);
-            GetPrivateProfileString(null, null, "", sb, 8192, file);
+            var buffer = new char[32768];
+            int length = GetPrivateProfileSectionNames(buffer, buffer.Length, file);
             var sections = new List<string>();
-            if (sb.Length == 0) return sections;
-            foreach (string s in sb.ToString().Split('\0'))
+            if (length <= 0) return sections;
+            foreach (string s in new string(buffer, 0, length).Split('\0'))
             {
                 if (s.Length > 0) sections.Add(s);
             }
