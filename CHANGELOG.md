@@ -6,7 +6,7 @@ All notable changes to Street Riders are documented here.
 
 ### Added
 - **Biker meetups**: a group rides to a venue you created, each biker parks at their own spot, then they hang out on foot in a circle or in front of their bike, chat, take turns doing wheelie runs on your freestyle lines, and leave in formation at the end. Meetups follow a day/hour schedule or can be started any time from the MEETINGS menu (F8).
-- **In-world meetup editor**: create an empty venue with F8 (your position becomes its center), then place parking spots, the circle center and freestyle lines directly on the ground (Enter to place, Backspace to delete, E to switch tool, R to switch a line between road and off-road). Every change is saved instantly, shown as labeled markers in the world, with GTA-style key hints at the bottom right.
+- **In-world meetup editor**: create an empty venue with F8, then place parking spots, the circle center and freestyle lines directly on the ground (Enter to place, Backspace to delete, E to switch tool, R to switch a line between road and off-road). Every change is saved instantly, shown as labeled markers in the world, with GTA-style key hints at the bottom right.
 - **Road and off-road freestyle lines**: each line is a start/end segment ridden back and forth, either following the road or going straight across terrain. At most two bikers share a line at the same time.
 
 ### Fixed

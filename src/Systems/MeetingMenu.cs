@@ -70,8 +70,8 @@ namespace StreetRiders
         {
             var createItem = new NativeItem(
                 T("+ Nouveau lieu ici", "+ New venue here"),
-                T("Enregistre ta position comme centre du lieu puis ouvre la modification au sol.",
-                  "Saves your position as the venue center, then opens on-ground editing."));
+                T("Crée un lieu vide ici puis ouvre la modification au sol.",
+                  "Creates an empty venue here, then opens on-ground editing."));
             createItem.Activated += (s, e) => CreateVenue();
             menu.Add(createItem);
 

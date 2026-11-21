@@ -291,15 +291,6 @@ namespace StreetRiders
         {
             Vector3 player = Game.Player.Character.Position;
 
-            float anchorDistance = player.DistanceTo(venue.Anchor);
-            if (anchorDistance < MeetingEditDrawDistance)
-            {
-                Vector3 anchor = GroundAt(venue.Anchor);
-                World.DrawMarker(MarkerType.Cylinder, anchor, Vector3.Zero, Vector3.Zero,
-                    new Vector3(0.4f, 0.4f, 2.0f), EditPendingColor);
-                DrawEditLabel(anchor, anchorDistance, T("CENTRE DU LIEU", "VENUE CENTER"), EditPendingColor);
-            }
-
             for (int i = 0; i < venue.ParkingPoints.Count; i++)
             {
                 MeetingPoint p = venue.ParkingPoints[i];

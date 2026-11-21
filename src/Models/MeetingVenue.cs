@@ -65,14 +65,25 @@ namespace StreetRiders
             public int NextScheduleAttempt = 0;
 
             /// <summary>
-            /// Ancre du lieu, posée à la création : sert à la matérialisation à l'approche
-            /// du joueur, au point d'arrivée du convoi et au départ en formation.
+            /// Position du joueur à la création : centre de repli tant que le lieu est vide.
             /// </summary>
             public Vector3 Anchor;
 
+            /// <summary>
+            /// Centre interne du lieu (matérialisation à l'approche, arrivée et départ du convoi) :
+            /// milieu de tous les points posés, invisible pour le moddeur.
+            /// </summary>
             public Vector3 Center
             {
-                get { return Anchor; }
+                get
+                {
+                    Vector3 sum = Vector3.Zero;
+                    int count = 0;
+                    foreach (MeetingPoint p in ParkingPoints) { sum += p.Position; count++; }
+                    if (CircleCenter.HasValue) { sum += CircleCenter.Value; count++; }
+                    foreach (MeetingLine line in Lines) { sum += line.A + line.B; count += 2; }
+                    return count > 0 ? sum / count : Anchor;
+                }
             }
         }
     }
