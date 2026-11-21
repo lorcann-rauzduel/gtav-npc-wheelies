@@ -22,6 +22,9 @@ namespace StreetRiders
         private const int MeetingMaxRidersPerLine = 2;
         private const float MeetingLineEndReach = 6f;
         private const int MeetingMountTimeoutMs = 15000;
+        private const float MeetingParkReach = 2.5f;
+        private const float MeetingParkNearZone = 12f;
+        private const int MeetingParkStuckMs = 20000;
 
         // DF_SwerveAroundAllCars | DF_SteerAroundPeds | DF_SteerAroundObjects | DF_ForceStraightLine :
         // trajet tout droit d'un bout à l'autre de la ligne, sans suivre le réseau routier.
@@ -52,11 +55,11 @@ namespace StreetRiders
                         break;
                     }
 
-                    if (bike.Position.DistanceTo(ms.ParkingOffset) < 8f && bike.Speed < 2f)
+                    if (HasReachedParking(ms, bike, now, out string arrival))
                     {
                         // Place atteinte : moteur au ralenti, frein à main, le motard se prépare.
                         Function.Call(Hash.SET_VEHICLE_HANDBRAKE, bike.Handle, true);
-                        SetMeetingPhase(ms, ped, MeetingRiderPhase.ParkedOnBike, "reached parking spot");
+                        SetMeetingPhase(ms, ped, MeetingRiderPhase.ParkedOnBike, $"P{ms.ParkingPointIndex + 1} {arrival}");
                         ms.HoldUntil = now + _rnd.Next(2000, 6000);
                         if (_debug) DrawDebugText(ped, "MEET: ParkedOnBike", Color.SkyBlue);
                     }
@@ -134,11 +137,11 @@ namespace StreetRiders
                         break;
                     }
                     // Retour à sa place : il descend et rejoint la vie à pied.
-                    if (bike.Position.DistanceTo(ms.ParkingOffset) < 8f && bike.Speed < 2f)
+                    if (HasReachedParking(ms, bike, now, out string back))
                     {
                         Function.Call(Hash.SET_VEHICLE_HANDBRAKE, bike.Handle, true);
                         Function.Call(Hash.TASK_LEAVE_VEHICLE, ped.Handle, bike.Handle, 0);
-                        SetMeetingPhase(ms, ped, MeetingRiderPhase.Dismounting, "back at parking spot");
+                        SetMeetingPhase(ms, ped, MeetingRiderPhase.Dismounting, $"back at P{ms.ParkingPointIndex + 1} {back}");
                         ms.HoldUntil = now + 5000;
                     }
                     else if (now > ms.NextTaskTime)
@@ -147,6 +150,29 @@ namespace StreetRiders
                     }
                     break;
             }
+        }
+
+        /// <summary>
+        /// Arrivée à sa propre place : à moins de MeetingParkReach et quasi à l'arrêt.
+        /// Une moto coincée près de sa place (bouchon, voisin mal garé) est acceptée après
+        /// MeetingParkStuckMs pour ne pas tourner en rond indéfiniment.
+        /// </summary>
+        private bool HasReachedParking(MeetingRiderState ms, Vehicle bike, int now, out string detail)
+        {
+            float distance = bike.Position.DistanceTo2D(ms.ParkingOffset);
+            detail = $"dist={distance:0.0}m";
+            if (bike.Speed >= 1.5f) return false;
+            if (distance < MeetingParkReach) return true;
+
+            if (distance > MeetingParkNearZone)
+            {
+                ms.NearSpotSince = 0;
+                return false;
+            }
+            if (ms.NearSpotSince == 0) ms.NearSpotSince = now;
+            if (now - ms.NearSpotSince < MeetingParkStuckMs) return false;
+            detail += " (stuck near spot, accepted)";
+            return true;
         }
 
         private Vehicle GetMyBike(RiderState st)
@@ -460,6 +486,7 @@ namespace StreetRiders
         {
             ResetMeetingWheelie(st);
             ms.LineIndex = -1;
+            ms.NearSpotSince = 0;
             SetMeetingPhase(ms, ped, MeetingRiderPhase.Paused, reason);
             if (ped.IsInVehicle()) DriveToParkingOffset(ms, ped, now);
             if (_debug) DrawDebugText(ped, "MEET: Paused", Color.Gray);

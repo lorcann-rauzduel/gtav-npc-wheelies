@@ -195,7 +195,9 @@ namespace StreetRiders
                 return FailVenueStart(venue, forced, "no staging road node", T("aucune route proche pour faire arriver le convoi", "no nearby road for the convoy to arrive"));
             }
 
-            int count = _rnd.Next(_meetingRidersMin, _meetingRidersMax + 1);
+            int wanted = _rnd.Next(venue.RidersMin ?? _meetingRidersMin, (venue.RidersMax ?? _meetingRidersMax) + 1);
+            List<MeetingPoint> spots = BuildParkingSpots(venue, wanted);
+            int count = spots.Count;
             int venueIndex = _meetingVenues.IndexOf(venue);
 
             // --- Load bike models (mixed like SpawnSystem) ---
@@ -331,16 +333,15 @@ namespace StreetRiders
                     Function.Call(Hash.GIVE_WEAPON_TO_PED, ped.Handle, weaponHash, 200, false, true);
                 }
 
-                // Personal parking point from the authored list — every rider parks at
-                // his own captured spot, oriented by the captured heading.
+                // Une place unique par motard (authorée ou générée), orientée par son cap.
                 var ms = new MeetingRiderState
                 {
                     VenueIndex = venueIndex,
                     Phase = MeetingRiderPhase.Arriving,
-                    ParkingPointIndex = i % venue.ParkingPoints.Count,
+                    ParkingPointIndex = i,
                     NextTaskTime = Game.GameTime
                 };
-                MeetingPoint pp = venue.ParkingPoints[ms.ParkingPointIndex];
+                MeetingPoint pp = spots[i];
                 ms.ParkingOffset = pp.Position;
                 ms.ParkingHeading = pp.Heading;
                 ms.LastTalkTime = Game.GameTime + _rnd.Next(0, 8000); // désynchro de la parlote
@@ -385,6 +386,54 @@ namespace StreetRiders
             if (_debug)
                 Notification.PostTicker($"~g~Meetings: {venue.Name} started ({group.PedHandles.Count}x {groupCfg.Name}){(forced ? " [forced]" : "")}", true);
             return true;
+        }
+
+        /// <summary>
+        /// Une place par motard. En mode Limit, l'effectif est plafonné aux places authorées ;
+        /// en mode AutoSpots, les places manquantes prolongent la dernière rangée (même
+        /// espacement et même cap que les deux dernières places, ou à côté de l'unique place).
+        /// </summary>
+        private List<MeetingPoint> BuildParkingSpots(MeetingVenue venue, int wanted)
+        {
+            var spots = new List<MeetingPoint>(venue.ParkingPoints);
+            MeetingExtraRiders mode = venue.ExtraRiders ?? _meetingExtraRiders;
+            if (wanted <= spots.Count)
+            {
+                spots.RemoveRange(wanted, spots.Count - wanted);
+                LogMeeting($"Meeting {venue.Name}: {wanted} riders on {venue.ParkingPoints.Count} spots");
+                return spots;
+            }
+            if (mode == MeetingExtraRiders.Limit)
+            {
+                LogMeeting($"Meeting {venue.Name}: riders limited {wanted} -> {spots.Count} (one per spot)");
+                return spots;
+            }
+
+            MeetingPoint last = spots[spots.Count - 1];
+            Vector3 step;
+            if (spots.Count >= 2)
+            {
+                Vector3 delta = last.Position - spots[spots.Count - 2].Position;
+                delta.Z = 0f;
+                float spacing = Math.Max(1.2f, Math.Min(3.5f, delta.Length()));
+                step = delta.Length() > 0.01f ? Vector3.Normalize(delta) * spacing : Vector3.Zero;
+            }
+            else
+            {
+                step = Vector3.Zero;
+            }
+            if (step == Vector3.Zero)
+            {
+                // Une seule place : on se range à droite de la moto, épaule contre épaule.
+                Vector3 forward = GetHeadingDir(last.Heading);
+                step = new Vector3(forward.Y, -forward.X, 0f) * 1.8f;
+            }
+
+            int generated = wanted - spots.Count;
+            for (int k = 1; k <= generated; k++)
+                spots.Add(new MeetingPoint { Position = last.Position + step * k, Heading = last.Heading });
+            LogMeeting($"Meeting {venue.Name}: {generated} auto spots generated after P{venue.ParkingPoints.Count} (step={step.Length():0.0}m)");
+            return spots;
         }
 
         /// <summary>

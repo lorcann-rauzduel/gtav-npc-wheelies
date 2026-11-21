@@ -33,6 +33,7 @@ namespace StreetRiders
             public int ParkingPointIndex = -1;   // index de la place de parking assignée
             public Vector3 ParkingOffset;        // position de la place (cible du TASK_VEHICLE_PARK)
             public float ParkingHeading;         // cap à respecter au parking
+            public int NearSpotSince = 0;        // instant d'entrée près de sa place (0 = loin)
 
             public MeetingOnFootMode OnFootMode = MeetingOnFootMode.AtBike;
             public int CircleSlot = -1;          // place générée dans le cercle (-1 = hors cercle)

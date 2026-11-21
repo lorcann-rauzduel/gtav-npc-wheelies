@@ -31,6 +31,13 @@ namespace StreetRiders
             }
         }
 
+        /// <summary>Que faire des motards au-delà du nombre de places authorées.</summary>
+        private enum MeetingExtraRiders
+        {
+            Limit,     // l'effectif est plafonné au nombre de places
+            AutoSpots  // places supplémentaires générées dans le prolongement de la dernière rangée
+        }
+
         /// <summary>
         /// Lieu de rassemblement lié à un groupe existant. Composé de places de parking
         /// (une par moto), d'un centre de cercle optionnel (les places à pied sont générées
@@ -46,6 +53,11 @@ namespace StreetRiders
             public List<MeetingPoint> ParkingPoints = new List<MeetingPoint>();
             public Vector3? CircleCenter;
             public List<MeetingLine> Lines = new List<MeetingLine>();
+
+            // Réglages propres au lieu ; null = valeur par défaut de [Meetings].
+            public int? RidersMin;
+            public int? RidersMax;
+            public MeetingExtraRiders? ExtraRiders;
 
             // État runtime du meeting (non persisté)
             public int ActiveGroupId = -1;

@@ -114,6 +114,7 @@ namespace StreetRiders
         private int _meetingFreestyleMinMs;
         private int _meetingFreestyleMaxMs;
         private bool _meetingDepartureFormation;
+        private MeetingExtraRiders _meetingExtraRiders;
         private List<MeetingVenue> _meetingVenues;
         private int _meetingLastUpdate;
         private int _meetingNextSchedulerCheck;
@@ -470,6 +471,7 @@ namespace StreetRiders
             _meetingFreestyleMinMs = GetIniInt(meetingsPath, "Meetings", "FreestyleBurstMinMs", 15000);
             _meetingFreestyleMaxMs = Math.Max(_meetingFreestyleMinMs, GetIniInt(meetingsPath, "Meetings", "FreestyleBurstMaxMs", 30000));
             _meetingDepartureFormation = GetIniBool(meetingsPath, "Meetings", "DepartureFormation", true);
+            _meetingExtraRiders = ParseExtraRiders(GetIniString(meetingsPath, "Meetings", "ExtraRiders", "limit")) ?? MeetingExtraRiders.Limit;
             LoadMeetingVenues(meetingsPath);
         }
 

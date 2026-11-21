@@ -54,6 +54,15 @@ namespace StreetRiders
                     venue.Lines.Add(line);
                 }
 
+                int ridersMin = GetIniInt(meetingsPath, section, "RidersMin", 0);
+                int ridersMax = GetIniInt(meetingsPath, section, "RidersMax", 0);
+                if (ridersMin > 0 && ridersMax >= ridersMin)
+                {
+                    venue.RidersMin = ridersMin;
+                    venue.RidersMax = ridersMax;
+                }
+                venue.ExtraRiders = ParseExtraRiders(GetIniString(meetingsPath, section, "ExtraRiders", ""));
+
                 if (venue.ParkingPoints.Count == 0)
                 {
                     LogMeeting($"Load: {section} ignored (no parking point)");
@@ -117,6 +126,35 @@ namespace StreetRiders
                 else
                     DeleteIniValue(file, section, "Line" + i);
             }
+
+            if (venue.RidersMin.HasValue && venue.RidersMax.HasValue)
+            {
+                WriteIniValue(file, section, "RidersMin", venue.RidersMin.Value.ToString(CultureInfo.InvariantCulture));
+                WriteIniValue(file, section, "RidersMax", venue.RidersMax.Value.ToString(CultureInfo.InvariantCulture));
+            }
+            else
+            {
+                DeleteIniValue(file, section, "RidersMin");
+                DeleteIniValue(file, section, "RidersMax");
+            }
+
+            if (venue.ExtraRiders.HasValue)
+                WriteIniValue(file, section, "ExtraRiders", SerializeExtraRiders(venue.ExtraRiders.Value));
+            else
+                DeleteIniValue(file, section, "ExtraRiders");
+        }
+
+        private static MeetingExtraRiders? ParseExtraRiders(string value)
+        {
+            string v = (value ?? "").Trim();
+            if (v.Equals("limit", StringComparison.OrdinalIgnoreCase)) return MeetingExtraRiders.Limit;
+            if (v.Equals("auto", StringComparison.OrdinalIgnoreCase)) return MeetingExtraRiders.AutoSpots;
+            return null;
+        }
+
+        private static string SerializeExtraRiders(MeetingExtraRiders mode)
+        {
+            return mode == MeetingExtraRiders.AutoSpots ? "auto" : "limit";
         }
 
         private void RemoveVenueFromIni(MeetingVenue venue)
